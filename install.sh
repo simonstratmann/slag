@@ -1,7 +1,7 @@
 #!/bin/sh
-# Install linuxfile for the current user (no root needed).
+# Install SLAG for the current user (no root needed).
 #   ./install.sh            install launcher, desktop entry and MIME types
-#   ./install.sh --default  additionally make linuxfile the default app for archives
+#   ./install.sh --default  additionally make SLAG the default app for archives
 #   ./install.sh --uninstall
 set -eu
 
@@ -9,9 +9,9 @@ REPO="$(cd "$(dirname "$0")" && pwd)"
 BIN_DIR="${XDG_BIN_HOME:-$HOME/.local/bin}"
 DATA_DIR="${XDG_DATA_HOME:-$HOME/.local/share}"
 CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}"
-BIN="$BIN_DIR/linuxfile"
-DESKTOP="$DATA_DIR/applications/linuxfile.desktop"
-MIME_XML="$DATA_DIR/mime/packages/linuxfile.xml"
+BIN="$BIN_DIR/slag"
+DESKTOP="$DATA_DIR/applications/slag.desktop"
+MIME_XML="$DATA_DIR/mime/packages/slag.xml"
 PY=/usr/bin/python3
 
 refresh() {
@@ -30,8 +30,8 @@ path = sys.argv[1]
 out = []
 for line in open(path, encoding="utf-8").read().split("\n"):
     key, sep, value = line.partition("=")
-    if sep and "linuxfile.desktop" in value:
-        apps = [a for a in value.split(";") if a and a != "linuxfile.desktop"]
+    if sep and "slag.desktop" in value:
+        apps = [a for a in value.split(";") if a and a != "slag.desktop"]
         if not apps:
             continue
         line = key + "=" + ";".join(apps) + ";"
@@ -40,7 +40,7 @@ open(path, "w", encoding="utf-8").write("\n".join(out))
 PYEOF
     fi
     refresh
-    echo "linuxfile uninstalled."
+    echo "SLAG uninstalled."
     exit 0
 fi
 
@@ -59,7 +59,7 @@ repo, bin_path, desktop = sys.argv[1:4]
 with open(bin_path, "w", encoding="utf-8") as fh:
     fh.write("#!/bin/sh\n")
     fh.write(f'PYTHONPATH={shlex.quote(repo)}"${{PYTHONPATH:+:$PYTHONPATH}}" '
-             'exec /usr/bin/python3 -m linuxfile "$@"\n')
+             'exec /usr/bin/python3 -m slag "$@"\n')
 os.chmod(bin_path, 0o755)
 
 def desktop_quote(arg):
@@ -68,18 +68,18 @@ def desktop_quote(arg):
     q = '"' + "".join("\\" + c if c in '"`$\\' else c for c in arg) + '"'
     return q.replace("\\", "\\\\").replace("%", "%%")
 
-template = open(os.path.join(repo, "data", "linuxfile.desktop.in"), encoding="utf-8").read()
+template = open(os.path.join(repo, "data", "slag.desktop.in"), encoding="utf-8").read()
 with open(desktop, "w", encoding="utf-8") as fh:
     fh.write(template.replace("@EXEC@", desktop_quote(bin_path)))
 PYEOF
-cp "$REPO/data/linuxfile-mime.xml" "$MIME_XML"
+cp "$REPO/data/slag-mime.xml" "$MIME_XML"
 refresh
 
 if [ "${1:-}" = "--default" ]; then
     types=$(sed -n 's/^MimeType=//p' "$DESKTOP" | tr ';' ' ')
     # shellcheck disable=SC2086
-    xdg-mime default linuxfile.desktop $types
-    echo "linuxfile is now the default application for archives."
+    xdg-mime default slag.desktop $types
+    echo "SLAG is now the default application for archives."
 fi
 
 echo "Installed: $BIN"

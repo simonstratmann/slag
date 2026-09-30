@@ -1,4 +1,4 @@
-# linuxfile
+# SLAG — Simon's Little Archive GUI
 
 A read-only archive browser for KDE with 7-Zip's behaviour: browse archives like folders,
 open archives inside archives, and extract exactly what you selected — without its parent
@@ -35,9 +35,9 @@ Python 3 + PyQt6, with the `7z` command line tool (7-Zip) doing all archive work
 | Ctrl+O                 | open archive                                                   |
 | Ctrl+,                 | settings (editor command, number of recent targets)            |
 
-Files opened with Enter/F4 are temporary copies (in `~/.cache/linuxfile`, without executable
-bits); the archive is never modified. If you edit such a copy, linuxfile tells you and offers to
-save a copy elsewhere (also on exit). Temporary copies stay available until linuxfile is closed,
+Files opened with Enter/F4 are temporary copies (in `~/.cache/slag`, without executable
+bits); the archive is never modified. If you edit such a copy, SLAG tells you and offers to
+save a copy elsewhere (also on exit). Temporary copies stay available until SLAG is closed,
 even when another archive is opened.
 
 The editor command may contain `%f` for the file; otherwise the file is appended
@@ -56,7 +56,7 @@ RAR codec is packaged separately: `sudo apt install 7zip-rar` (multiverse).
 ./install.sh --uninstall
 ```
 
-Run without installing: `/usr/bin/python3 -m linuxfile [archive]`.
+Run without installing: `/usr/bin/python3 -m slag [archive]`.
 
 ## Development
 

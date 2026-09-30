@@ -1,6 +1,6 @@
 from PyQt6.QtCore import Qt
 
-from linuxfile.ui.archive_model import COL_NAME, natural_key
+from slag.ui.archive_model import COL_NAME, natural_key
 
 
 def names_in_view(w):
@@ -38,7 +38,7 @@ def test_keyboard_navigation(window, archives, qtbot):
 
 def test_open_not_an_archive(window, archives, monkeypatch):
     shown = []
-    monkeypatch.setattr("linuxfile.ui.main_window.QMessageBox.warning", lambda *a: shown.append(a))
+    monkeypatch.setattr("slag.ui.main_window.QMessageBox.warning", lambda *a: shown.append(a))
     assert not window.open_path(str(archives["plain"]))
     assert shown and window.layer is None
 
@@ -51,7 +51,7 @@ def test_open_with_password(window, archives, monkeypatch):
         prompts.append(prompt)
         return next(answers)
 
-    monkeypatch.setattr("linuxfile.ui.main_window.QInputDialog.getText", fake_get_text)
+    monkeypatch.setattr("slag.ui.main_window.QInputDialog.getText", fake_get_text)
     assert window.open_path(str(archives["enc_headers"]))
     assert len(prompts) == 2 and prompts[1].startswith("Wrong password")
     assert window.layer.password == "secret"
@@ -102,7 +102,7 @@ def test_nested_in_encrypted_parent(window, archives, monkeypatch):
         prompts.append(prompt)
         return ("secret", True)
 
-    monkeypatch.setattr("linuxfile.ui.main_window.QInputDialog.getText", fake_get_text)
+    monkeypatch.setattr("slag.ui.main_window.QInputDialog.getText", fake_get_text)
     window.open_path(str(archives["enc_outer"]))
     assert prompts == []  # zip headers are not encrypted
     node = window.layer.root.find("inner/inner.zip")
@@ -116,7 +116,7 @@ def test_nested_in_encrypted_parent(window, archives, monkeypatch):
 def test_shortcuts_blocked_while_busy(window, archives, qtbot):
     import time
     from PyQt6.QtTest import QTest
-    from linuxfile.ui.tasks import run_blocking
+    from slag.ui.tasks import run_blocking
     window.show()
     window.open_path(str(archives["zip"]))
     folder = window.layer.root.child("folder")
@@ -149,8 +149,8 @@ def test_sort_keeps_selection(window, archives):
 
 def test_sort_performance_with_large_selection(window):
     import time
-    from linuxfile.backend.sevenzip import Entry
-    from linuxfile.backend.tree import build_tree
+    from slag.backend.sevenzip import Entry
+    from slag.backend.tree import build_tree
     root = build_tree(Entry(f"f{i}.txt", False, size=i) for i in range(50_000))
     window.model.set_directory(root, has_parent_row=True)
     window.view.selectAll()
@@ -183,13 +183,13 @@ def test_leave_nested_tar_gz_selects_it(window, archives):
 
 
 def test_cancel_password_prompt(window, archives, monkeypatch):
-    monkeypatch.setattr("linuxfile.ui.main_window.QInputDialog.getText", lambda *a: ("", False))
+    monkeypatch.setattr("slag.ui.main_window.QInputDialog.getText", lambda *a: ("", False))
     assert not window.open_path(str(archives["enc_headers"]))
     assert window.layer is None
 
 
 def test_damaged_archive_shows_warning(window, odd_archives, monkeypatch):
     shown = []
-    monkeypatch.setattr("linuxfile.ui.main_window.QMessageBox.exec", lambda self: shown.append(self.text()))
+    monkeypatch.setattr("slag.ui.main_window.QMessageBox.exec", lambda self: shown.append(self.text()))
     assert window.open_path(str(odd_archives["trunc"]))
     assert shown and "damaged" in shown[0]

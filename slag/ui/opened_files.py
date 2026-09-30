@@ -84,7 +84,7 @@ class OpenedFiles:
                 self._offer_save(
                     f, "was modified",
                     "The archive is opened read-only, so the change is <b>not</b> saved into "
-                    "it. The edited file only exists as a temporary copy until linuxfile "
+                    "it. The edited file only exists as a temporary copy until SLAG "
                     "is closed.")
         finally:
             self._checking = False
@@ -100,7 +100,7 @@ class OpenedFiles:
                 sig = _signature(f.path)
                 if not self._offer_save(
                         f, "has unsaved changes",
-                        "The temporary copy will be deleted when linuxfile closes.",
+                        "The temporary copy will be deleted when SLAG closes.",
                         allow_cancel=True):
                     return False
                 f.notified = sig

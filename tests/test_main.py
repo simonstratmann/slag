@@ -1,4 +1,4 @@
-from linuxfile.__main__ import archive_arguments
+from slag.__main__ import archive_arguments
 
 
 def test_archive_arguments(tmp_path, monkeypatch):

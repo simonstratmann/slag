@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <mime-info xmlns="http://www.freedesktop.org/standards/shared-mime-info">
   <!-- First volumes of split archives that have no MIME type of their own -->
-  <mime-type type="application/x-linuxfile-split">
+  <mime-type type="application/x-slag-split">
     <comment>Split archive volume</comment>
     <generic-icon name="package-x-generic"/>
     <glob pattern="*.001"/>

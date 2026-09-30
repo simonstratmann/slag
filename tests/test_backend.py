@@ -3,12 +3,12 @@ from pathlib import Path
 
 import pytest
 
-from linuxfile.backend.extract import ConflictAction, extract_nodes, unique_name
-from linuxfile.backend.sevenzip import (
+from slag.backend.extract import ConflictAction, extract_nodes, unique_name
+from slag.backend.sevenzip import (
     Cancelled, NotAnArchive, PasswordRequired, parse_listing,
 )
-from linuxfile.backend.tree import build_tree, normalize_components
-from linuxfile.backend.volumes import first_volume, is_archive_name
+from slag.backend.tree import build_tree, normalize_components
+from slag.backend.volumes import first_volume, is_archive_name
 
 
 def tree_for(sz, path, password=""):
@@ -190,7 +190,7 @@ def test_extract_conflicts(sz, archives, tmp_path):
                         tmp_path, lambda d, s: ConflictAction.CANCEL)
     assert res.cancelled and res.extracted == [tmp_path / "emptydir"]
     # staging directory is always cleaned up
-    assert not [p for p in tmp_path.iterdir() if p.name.startswith(".linuxfile")]
+    assert not [p for p in tmp_path.iterdir() if p.name.startswith(".slag")]
 
 
 def test_extract_progress_and_cancel(sz, archives, tmp_path):
@@ -285,7 +285,7 @@ def test_truncated_archive_lists_with_warning(sz, odd_archives):
 
 def test_missing_volume_message(sz, archives, tmp_path):
     import shutil
-    from linuxfile.backend.sevenzip import SevenZipError
+    from slag.backend.sevenzip import SevenZipError
     first = Path(str(archives["split7z"]))
     shutil.copy(first, tmp_path / first.name)
     with pytest.raises(SevenZipError) as ei:
@@ -304,7 +304,7 @@ def test_overwrite_dir_with_file_is_safe(sz, archives, tmp_path):
 
 
 def test_unsupported_method_hint():
-    from linuxfile.backend.sevenzip import SevenZipError, _raise_for_error
+    from slag.backend.sevenzip import SevenZipError, _raise_for_error
     with pytest.raises(SevenZipError) as ei:
         _raise_for_error(2, "", "ERROR: Unsupported Method : x.txt\n", "")
     assert "7zip-rar" in str(ei.value)

@@ -1,11 +1,11 @@
-# linuxfile — plan
+# SLAG (Simon's Little Archive GUI) — plan
 
 A 7-Zip-style, read-only archive browser for KDE. Python 3 + PyQt6, the `7z` CLI as backend.
 
 ## Architecture
 
 ```
-linuxfile/
+slag/
   backend/
     sevenzip.py   # wrapper around the 7z CLI: list, extract, progress, errors
     tree.py       # flat 7z listing -> directory tree (Node)

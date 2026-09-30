@@ -121,7 +121,7 @@ def run_blocking(parent: Optional[QWidget], title: str, fn: TaskFn, delay_ms: in
             signals.done.emit()
 
     dialog = QProgressDialog(title, "Cancel", 0, 0, parent)
-    dialog.setWindowTitle("linuxfile")
+    dialog.setWindowTitle("SLAG")
     dialog.setWindowModality(Qt.WindowModality.WindowModal)
     dialog.setAutoClose(False)
     dialog.setAutoReset(False)
@@ -148,7 +148,7 @@ def run_blocking(parent: Optional[QWidget], title: str, fn: TaskFn, delay_ms: in
     app = QApplication.instance()
     app.installEventFilter(blocker)
     QApplication.setOverrideCursor(Qt.CursorShape.BusyCursor)
-    thread = threading.Thread(target=worker, name="linuxfile-task", daemon=True)
+    thread = threading.Thread(target=worker, name="slag-task", daemon=True)
     _active.append((dialog, show_timer))
     try:
         thread.start()

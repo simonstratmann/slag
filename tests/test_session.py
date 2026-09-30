@@ -1,6 +1,6 @@
 import os
 
-from linuxfile.backend.session import Session
+from slag.backend.session import Session
 
 
 def test_open_tar_gz_unwraps(sz, archives, tmp_path):
@@ -89,7 +89,7 @@ def test_damaged_archive_warning(sz, odd_archives, tmp_path):
 
 
 def test_stale_cache_cleanup(tmp_path):
-    from linuxfile.backend.session import cleanup_stale_caches
+    from slag.backend.session import cleanup_stale_caches
     (tmp_path / "999999999-abc").mkdir()
     (tmp_path / f"{os.getpid()}-mine").mkdir()
     (tmp_path / "other").mkdir()

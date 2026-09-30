@@ -4,9 +4,9 @@ import time
 import pytest
 from PyQt6.QtCore import QSettings
 
-from linuxfile.ui import main_window as mw
-from linuxfile.ui.opened_files import OpenedFiles
-from linuxfile.ui.settings import EDITOR_KEY, build_editor_args
+from slag.ui import main_window as mw
+from slag.ui.opened_files import OpenedFiles
+from slag.ui.settings import EDITOR_KEY, build_editor_args
 
 
 @pytest.fixture
@@ -151,7 +151,7 @@ def test_close_asks_while_editor_runs(window, archives, popen_calls, monkeypatch
 
 
 def test_check_is_deferred_during_task_and_modal(window, archives, popen_calls, monkeypatch):
-    from linuxfile.ui import tasks
+    from slag.ui import tasks
     offers = []
     monkeypatch.setattr(OpenedFiles, "_offer_save",
                         lambda self, f, what, info, allow_cancel=False: offers.append(what) or True)
@@ -213,7 +213,7 @@ def test_keys_enter_shift_enter_f4(window, archives, qtbot, monkeypatch):
 
 
 def test_settings_dialog(qtbot, isolated_settings):
-    from linuxfile.ui.settings import RECENT_COUNT_KEY, SettingsDialog
+    from slag.ui.settings import RECENT_COUNT_KEY, SettingsDialog
     s = QSettings()
     dlg = SettingsDialog(None, s)
     qtbot.addWidget(dlg)

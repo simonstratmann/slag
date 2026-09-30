@@ -65,9 +65,9 @@ class Layer:
 
 
 def _default_cache_parent() -> str:
-    """~/.cache/linuxfile (not /tmp, which often is RAM backed tmpfs)."""
+    """~/.cache/slag (not /tmp, which often is RAM backed tmpfs)."""
     base = os.environ.get("XDG_CACHE_HOME") or os.path.join(os.path.expanduser("~"), ".cache")
-    return os.path.join(base, "linuxfile")
+    return os.path.join(base, "slag")
 
 
 def _pid_alive(pid: int) -> bool:
@@ -81,7 +81,7 @@ def _pid_alive(pid: int) -> bool:
 
 
 def cleanup_stale_caches(parent: str) -> None:
-    """Remove cache dirs of linuxfile processes that are gone (crash, kill -9)."""
+    """Remove cache dirs of slag processes that are gone (crash, kill -9)."""
     try:
         names = os.listdir(parent)
     except OSError:

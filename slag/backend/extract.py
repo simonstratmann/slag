@@ -35,7 +35,7 @@ class ConflictAction(enum.Enum):
 # (existing destination, incoming source) -> action
 ConflictCallback = Callable[[Path, Path], ConflictAction]
 
-STAGING_PREFIX = ".linuxfile-extract-"
+STAGING_PREFIX = ".slag-extract-"
 
 
 @dataclass
@@ -107,7 +107,7 @@ def _remove(p: Path) -> None:
 
 def _replace(src: Path, dst: Path) -> None:
     """Replace ``dst`` by ``src`` without losing ``dst`` if the move fails."""
-    aside = unique_name(dst.with_name(f".{dst.name}.linuxfile-old"))
+    aside = unique_name(dst.with_name(f".{dst.name}.slag-old"))
     os.rename(dst, aside)
     try:
         _rename_noreplace(src, dst)

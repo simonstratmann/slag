@@ -311,7 +311,7 @@ class SevenZip:
                 paths = [p for p in dict.fromkeys(raw_paths) if "\n" not in p and "\r" not in p]
                 if not paths:
                     return
-                fd, list_file = tempfile.mkstemp(prefix="linuxfile-", suffix=".lst")
+                fd, list_file = tempfile.mkstemp(prefix="slag-", suffix=".lst")
                 with os.fdopen(fd, "w", encoding="utf-8") as fh:
                     for p in paths:
                         # Quoted, otherwise 7z strips leading/trailing spaces.

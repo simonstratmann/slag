@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from linuxfile.backend.sevenzip import SevenZip
+from slag.backend.sevenzip import SevenZip
 
 
 def run(args, cwd):
@@ -94,15 +94,15 @@ def isolated_settings(tmp_path, monkeypatch):
     from PyQt6.QtCore import QCoreApplication, QSettings
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
     QSettings.setPath(QSettings.Format.NativeFormat, QSettings.Scope.UserScope, str(tmp_path / "config"))
-    QCoreApplication.setOrganizationName("linuxfile-test")
-    QCoreApplication.setApplicationName("linuxfile-test")
+    QCoreApplication.setOrganizationName("slag-test")
+    QCoreApplication.setApplicationName("slag-test")
     return tmp_path / "config"
 
 
 @pytest.fixture
 def window(qtbot, isolated_settings, tmp_path):
-    from linuxfile.backend.session import Session
-    from linuxfile.ui.main_window import MainWindow
+    from slag.backend.session import Session
+    from slag.ui.main_window import MainWindow
     session = Session(cache_root=str(tmp_path / "cache"))
     (tmp_path / "cache").mkdir(exist_ok=True)
     w = MainWindow(session)

@@ -26,7 +26,8 @@ from .opened_files import OpenedFiles
 from .settings import SettingsDialog, build_editor_args, editor_command
 from .tasks import run_blocking
 
-APP_NAME = "linuxfile"
+APP_NAME = "SLAG"  # Simon's Little Archive GUI
+APP_ID = "slag"  # config/cache dirs, desktop file
 PATH_SEPARATOR = " › "
 
 

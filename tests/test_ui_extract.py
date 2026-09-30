@@ -3,9 +3,9 @@ from pathlib import Path
 
 from PyQt6.QtCore import QItemSelectionModel, QSettings
 
-from linuxfile.backend.extract import ConflictAction
-from linuxfile.ui import conflict
-from linuxfile.ui.extract_dialog import ExtractDialog, expand_path, recent_targets, remember_target
+from slag.backend.extract import ConflictAction
+from slag.ui import conflict
+from slag.ui.extract_dialog import ExtractDialog, expand_path, recent_targets, remember_target
 
 
 def select(window, *nodes):
@@ -82,7 +82,7 @@ def test_conflict_dialog_called_in_gui_thread(window, archives, tmp_path, monkey
 
 
 def test_extract_encrypted_entries_prompts(window, archives, tmp_path, monkeypatch):
-    monkeypatch.setattr("linuxfile.ui.main_window.QInputDialog.getText",
+    monkeypatch.setattr("slag.ui.main_window.QInputDialog.getText",
                         lambda *a: ("secret", True))
     window.open_path(str(archives["enc_zip"]))
     window.extract_to(window.nodes_to_extract(), str(tmp_path / "o"))
@@ -129,7 +129,7 @@ def test_extract_dialog(qtbot, isolated_settings, tmp_path):
 
 
 def test_directory_completions(tmp_path, monkeypatch):
-    from linuxfile.ui.extract_dialog import directory_completions
+    from slag.ui.extract_dialog import directory_completions
     for d in ["delta", "deltb", ".hidden", "other"]:
         (tmp_path / d).mkdir()
     (tmp_path / "delfile").write_text("")
@@ -155,7 +155,7 @@ def test_completer_popup_while_typing(qtbot, isolated_settings, tmp_path):
 
 
 def test_target_validation(qtbot, isolated_settings, tmp_path):
-    from linuxfile.ui.extract_dialog import target_problem
+    from slag.ui.extract_dialog import target_problem
     (tmp_path / "file").write_text("")
     assert target_problem(str(tmp_path / "file"))
     assert target_problem(str(tmp_path / "new" / "deeper")) is None
@@ -203,7 +203,7 @@ def test_summary_is_escaped(window, tmp_path, monkeypatch):
         def exec(self):
             return 0
 
-    monkeypatch.setattr("linuxfile.ui.main_window.ExtractDialog", FakeDialog)
+    monkeypatch.setattr("slag.ui.main_window.ExtractDialog", FakeDialog)
     window.extract_dialog()
     assert "a&lt;b&gt;.txt" in seen[0]
 
@@ -211,7 +211,7 @@ def test_summary_is_escaped(window, tmp_path, monkeypatch):
 def test_real_conflict_dialog_hides_progress(window, archives, tmp_path, monkeypatch):
     from PyQt6.QtCore import QTimer
     from PyQt6.QtWidgets import QApplication, QMessageBox, QProgressDialog
-    from linuxfile.ui import tasks
+    from slag.ui import tasks
     from PyQt6.QtWidgets import QDialog
     monkeypatch.setattr(QMessageBox, "exec", lambda self: QDialog.exec(self))  # real exec
     window.open_path(str(archives["zip"]))
