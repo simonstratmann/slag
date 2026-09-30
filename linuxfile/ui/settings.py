@@ -34,8 +34,12 @@ def build_editor_args(command: str, path: str) -> list[str]:
     args = shlex.split(command)
     if not args:
         raise ValueError("No editor configured")
+    if "%f" in args:
+        return [path if a == "%f" else a.replace("%f", shlex.quote(path)) for a in args]
     if any("%f" in a for a in args):
-        return [a.replace("%f", path) for a in args]
+        # '%f' inside a larger argument (e.g. sh -c "vim %f"): the argument is most
+        # likely parsed by a shell again, so quote the file name for it.
+        return [a.replace("%f", shlex.quote(path)) for a in args]
     return args + [path]
 
 

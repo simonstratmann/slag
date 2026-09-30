@@ -9,10 +9,13 @@ from __future__ import annotations
 
 import os
 import shutil
+import subprocess
 from dataclasses import dataclass
 from typing import Optional
 
-from PyQt6.QtWidgets import QFileDialog, QMessageBox, QWidget
+from PyQt6.QtWidgets import QApplication, QFileDialog, QMessageBox, QWidget
+
+from . import tasks
 
 
 @dataclass
@@ -21,6 +24,7 @@ class OpenedFile:
     archive_name: str  # for messages, e.g. "a.zip › folder/file.txt"
     signature: tuple[float, int]
     notified: Optional[tuple[float, int]] = None  # signature the user was told about
+    process: Optional[subprocess.Popen] = None  # editor started with F4
 
 
 def _signature(path: str) -> Optional[tuple[float, int]]:
@@ -37,13 +41,22 @@ class OpenedFiles:
         self.files: dict[str, OpenedFile] = {}
         self._checking = False
 
-    def track(self, path: str, archive_name: str) -> None:
+    def track(self, path: str, archive_name: str, process: Optional[subprocess.Popen] = None) -> None:
         sig = _signature(path)
         if sig is None:
             return
         existing = self.files.get(path)
         if existing is None:
-            self.files[path] = OpenedFile(path, archive_name, sig)
+            self.files[path] = OpenedFile(path, archive_name, sig, process=process)
+        elif process is not None:
+            existing.process = process
+
+    def paths(self) -> list[str]:
+        return list(self.files)
+
+    def running_editors(self) -> list[OpenedFile]:
+        return [f for f in self.files.values()
+                if f.process is not None and f.process.poll() is None]
 
     def modified(self) -> list[OpenedFile]:
         result = []
@@ -56,6 +69,10 @@ class OpenedFiles:
     def check(self) -> None:
         """Tell the user about temp copies modified since the last check."""
         if self._checking:
+            return
+        # Not while another dialog or a background task is active; the next
+        # activation of the window checks again.
+        if QApplication.activeModalWidget() is not None or tasks._active:
             return
         self._checking = True
         try:
@@ -77,27 +94,29 @@ class OpenedFiles:
 
         Returns False if the user wants to keep the window open.
         """
-        for f in self.modified():
-            if not self._offer_save(
-                    f, "has unsaved changes",
-                    "The temporary copy will be deleted when linuxfile closes.",
-                    allow_cancel=True):
-                return False
-        return True
-
-    def confirm_discard(self, cache_dirs: list[str]) -> bool:
-        """Before the cache of an archive is deleted (another archive gets opened)."""
-        prefixes = tuple(os.path.join(d, "") for d in cache_dirs)
-        affected = [f for f in self.modified() if f.path.startswith(prefixes)]
-        for f in affected:
-            if not self._offer_save(
-                    f, "has unsaved changes",
-                    "Its temporary copy will be deleted when another archive is opened.",
-                    allow_cancel=True):
-                return False
-        for path in [p for p in self.files if p.startswith(prefixes)]:
-            del self.files[path]
-        return True
+        self._checking = True
+        try:
+            for f in self.modified():
+                sig = _signature(f.path)
+                if not self._offer_save(
+                        f, "has unsaved changes",
+                        "The temporary copy will be deleted when linuxfile closes.",
+                        allow_cancel=True):
+                    return False
+                f.notified = sig
+            editors = self.running_editors()
+            if editors:
+                names = "\n".join(os.path.basename(f.path) for f in editors)
+                answer = QMessageBox.question(
+                    self.parent, "Files still open",
+                    "These temporary copies are still open in the editor:\n\n" + names
+                    + "\n\nThey will be deleted, and changes not saved yet will be lost. "
+                    "Close anyway?")
+                if answer != QMessageBox.StandardButton.Yes:
+                    return False
+            return True
+        finally:
+            self._checking = False
 
     def _offer_save(self, f: OpenedFile, what: str, info: str, allow_cancel: bool = False) -> bool:
         box = QMessageBox(QMessageBox.Icon.Information, "Edited file",

@@ -119,9 +119,16 @@ class Session:
     def close(self) -> None:
         shutil.rmtree(self.cache_root, ignore_errors=True)
 
-    def discard(self, layer: Layer) -> None:
-        """Free the cache of an archive (and everything opened from it) no longer shown."""
+    def discard(self, layer: Layer, keep_paths: tuple[str, ...] | list[str] = ()) -> None:
+        """Free the cache of an archive (and everything opened from it) no longer shown.
+
+        Cache dirs containing one of ``keep_paths`` (files still opened in other
+        applications) are kept until ``close()``.
+        """
         for d in layer.outermost.cache_dirs():
+            prefix = os.path.join(d, "")
+            if any(p.startswith(prefix) for p in keep_paths):
+                continue
             shutil.rmtree(d, ignore_errors=True)
 
     # -- opening --------------------------------------------------------------------
@@ -165,6 +172,10 @@ class Session:
             return existing
         path = self.extract_to_cache(parent, node, progress=progress, cancel=cancel)
         listing = self.sevenzip.list(first_volume(path), password=password, cancel=cancel)
+        if listing.archive_type.lower() == "split" and sibling_volumes(
+                node.name, list(node.parent.children) if node.parent else []) == [node.name]:
+            # 7z "opens" any lone x.001 as a split set containing x: not an archive.
+            raise NotAnArchive(f"{node.name} is not an archive")
         layer = Layer(
             archive_path=first_volume(path),
             display_name=node.name,

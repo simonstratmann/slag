@@ -16,16 +16,26 @@ def opened_urls(monkeypatch):
     return urls
 
 
+class _Calls(list):
+    popen = None
+
+
 @pytest.fixture
 def popen_calls(monkeypatch):
-    calls = []
+    calls = _Calls()
 
     class FakePopen:
+        running = False
+
         def __init__(self, args, **kw):
             calls.append((args, kw))
 
+        def poll(self):
+            return None if FakePopen.running else 0
+
     import types
     monkeypatch.setattr(mw, "subprocess", types.SimpleNamespace(Popen=FakePopen, DEVNULL=-3))
+    calls.popen = FakePopen
     return calls
 
 
@@ -109,14 +119,109 @@ def test_modified_temp_copy_is_reported(window, archives, popen_calls, monkeypat
     assert popen_calls[1][0][-1] == path
 
 
-def test_opening_other_archive_asks_about_modified_copies(window, archives, popen_calls, monkeypatch):
-    answers = [False]
-    monkeypatch.setattr(OpenedFiles, "_offer_save",
-                        lambda self, f, what, info, allow_cancel=False: answers.pop(0) if answers else True)
+def test_switching_archive_keeps_opened_temp_copies(window, archives, popen_calls):
     window.open_path(str(archives["zip"]))
     window.edit(window.layer.root.child("top.txt"))
     path = popen_calls[0][0][-1]
-    with open(path, "a") as fh:
-        fh.write(" edited")
-    assert not window.open_path(str(archives["7z"]))  # user cancelled
-    assert window.layer.display_name == "a.zip" and os.path.exists(path)
+    other_dirs = []
+    window.open_path(str(archives["nested"]))
+    node = window.layer.root.find("inner/inner.zip")
+    window._show_directory(node.parent)
+    window.open_inside(node)
+    other_dirs = window.layer.outermost.cache_dirs()
+    assert os.path.exists(path)  # still opened in the editor: kept
+    window.open_path(str(archives["7z"]))
+    assert os.path.exists(path)
+    assert not any(os.path.exists(d) for d in other_dirs)  # nothing opened there: freed
+
+
+def test_close_asks_while_editor_runs(window, archives, popen_calls, monkeypatch):
+    from PyQt6.QtWidgets import QMessageBox
+    answers = []
+    monkeypatch.setattr(QMessageBox, "question",
+                        staticmethod(lambda *a: answers.append(a[2]) or QMessageBox.StandardButton.No))
+    window.open_path(str(archives["zip"]))
+    window.edit(window.layer.root.child("top.txt"))
+    popen_calls.popen.running = True
+    window.show()
+    assert not window.close()
+    assert answers and "top.txt" in answers[0]
+    popen_calls.popen.running = False
+    assert window.close()
+
+
+def test_check_is_deferred_during_task_and_modal(window, archives, popen_calls, monkeypatch):
+    from linuxfile.ui import tasks
+    offers = []
+    monkeypatch.setattr(OpenedFiles, "_offer_save",
+                        lambda self, f, what, info, allow_cancel=False: offers.append(what) or True)
+    window.open_path(str(archives["zip"]))
+    window.edit(window.layer.root.child("top.txt"))
+    with open(popen_calls[0][0][-1], "a") as fh:
+        fh.write("x")
+    during = []
+    tasks.run_blocking(window, "busy", lambda p, c: during.append(window.opened.check()) or 1)
+    # check() from inside the worker is a no-op because a task is active
+    assert offers == []
+    window.opened.check()
+    assert offers == ["was modified"]
+
+
+def test_executable_bits_stripped_before_opening(window, tmp_path, opened_urls):
+    import stat
+    import tarfile
+    src = tmp_path / "run.sh"
+    src.write_text("#!/bin/sh\necho hi\n")
+    src.chmod(0o755)
+    arc = tmp_path / "x.tar"
+    with tarfile.open(arc, "w") as t:
+        t.add(src, "run.sh")
+    window.open_path(str(arc))
+    window.open_external(window.layer.root.child("run.sh"))
+    mode = os.stat(opened_urls[0]).st_mode
+    assert not mode & (stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+
+
+def test_lone_001_is_not_an_archive(window, tmp_path, opened_urls):
+    import zipfile
+    arc = tmp_path / "x.zip"
+    with zipfile.ZipFile(arc, "w") as z:
+        z.writestr("data.001", "just data")
+    window.open_path(str(arc))
+    window._open_row(window.model.row_of(window.layer.root.child("data.001")))
+    assert window.layer.parent is None and len(opened_urls) == 1
+
+
+def test_editor_percent_f_quoting():
+    assert build_editor_args("sh -c 'vim %f'", "/t/a;rm x.txt") == ["sh", "-c", "vim '/t/a;rm x.txt'"]
+    assert build_editor_args("kate %f", "/t/a b") == ["kate", "/t/a b"]
+
+
+def test_keys_enter_shift_enter_f4(window, archives, qtbot, monkeypatch):
+    from PyQt6.QtCore import Qt
+    calls = []
+    window.show()
+    window.open_path(str(archives["zip"]))
+    monkeypatch.setattr(window, "open_external", lambda n: calls.append(("ext", n.name)))
+    monkeypatch.setattr(window, "edit", lambda n: calls.append(("edit", n.name)))
+    node = window.layer.root.child("top.txt")
+    window.view.setCurrentIndex(window.model.index(window.model.row_of(node), 0))
+    qtbot.keyClick(window.view, Qt.Key.Key_Return)
+    qtbot.keyClick(window.view, Qt.Key.Key_Return, Qt.KeyboardModifier.ShiftModifier)
+    qtbot.keyClick(window.view, Qt.Key.Key_F4)
+    assert calls == [("ext", "top.txt"), ("ext", "top.txt"), ("edit", "top.txt")]
+
+
+def test_settings_dialog(qtbot, isolated_settings):
+    from linuxfile.ui.settings import RECENT_COUNT_KEY, SettingsDialog
+    s = QSettings()
+    dlg = SettingsDialog(None, s)
+    qtbot.addWidget(dlg)
+    dlg.editor_edit.setText("kate 'unclosed")
+    dlg.accept()
+    assert s.value(EDITOR_KEY) is None
+    dlg.editor_edit.setText("konsole -e nvim %f")
+    dlg.recent_spin.setValue(3)
+    dlg.accept()
+    assert s.value(EDITOR_KEY) == "konsole -e nvim %f"
+    assert int(s.value(RECENT_COUNT_KEY)) == 3

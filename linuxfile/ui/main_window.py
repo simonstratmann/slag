@@ -188,10 +188,7 @@ class MainWindow(QMainWindow):
         if layer is None:
             return False
         if self.layer is not None:
-            if not self.opened.confirm_discard(self.layer.outermost.cache_dirs()):
-                self.session.discard(layer)
-                return False
-            self.session.discard(self.layer)
+            self.session.discard(self.layer, keep_paths=self.opened.paths())
         self.layer = layer
         self._show_directory(layer.root)
         self._show_warning(layer)
@@ -323,6 +320,8 @@ class MainWindow(QMainWindow):
         if path is None:
             return False
         self.opened.track(path, self._describe(node))
+        # Never hand an executable from an (untrusted) archive to the desktop's opener.
+        strip_exec_bits(path)
         if not QDesktopServices.openUrl(QUrl.fromLocalFile(path)):
             QMessageBox.warning(self, APP_NAME, f"No application found to open {node.name}.")
             return False
@@ -338,12 +337,12 @@ class MainWindow(QMainWindow):
         path = self.extract_to_cache(node)
         if path is None:
             return False
-        self.opened.track(path, self._describe(node))
         command = editor_command(self.settings)
         try:
             args = build_editor_args(command, path)
-            subprocess.Popen(args, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
-                             stderr=subprocess.DEVNULL, start_new_session=True)
+            process = subprocess.Popen(args, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                                       stderr=subprocess.DEVNULL, start_new_session=True)
+            self.opened.track(path, self._describe(node), process)
         except (OSError, ValueError) as exc:
             QMessageBox.warning(self, APP_NAME,
                                 f"Could not start the editor \"{command}\":\n{exc}\n\n"
@@ -557,6 +556,15 @@ class MainWindow(QMainWindow):
         if urls and urls[0].isLocalFile():
             event.acceptProposedAction()
             self.open_path(urls[0].toLocalFile())
+
+
+def strip_exec_bits(path: str) -> None:
+    try:
+        st = os.lstat(path)
+        if not os.path.islink(path):
+            os.chmod(path, st.st_mode & ~0o111)
+    except OSError:
+        pass
 
 
 _EMPTY_ROOT = Node("", True)
