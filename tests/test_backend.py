@@ -301,3 +301,10 @@ def test_overwrite_dir_with_file_is_safe(sz, archives, tmp_path):
                   lambda d, s: ConflictAction.OVERWRITE)
     assert (tmp_path / "top.txt").read_text() == "top"
     assert sorted(p.name for p in tmp_path.iterdir()) == ["top.txt"]  # no leftovers
+
+
+def test_unsupported_method_hint():
+    from linuxfile.backend.sevenzip import SevenZipError, _raise_for_error
+    with pytest.raises(SevenZipError) as ei:
+        _raise_for_error(2, "", "ERROR: Unsupported Method : x.txt\n", "")
+    assert "7zip-rar" in str(ei.value)

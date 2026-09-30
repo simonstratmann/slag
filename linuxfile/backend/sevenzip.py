@@ -154,7 +154,11 @@ def _raise_for_error(rc: int, stdout: str, stderr: str, password: str) -> None:
         raise NotAnArchive("The file is not a supported archive.")
     lines = [l.strip() for l in stderr.split("\n") if l.strip()]
     message = "\n".join(lines) or f"7z failed with exit code {rc}"
-    if "Unexpected end of archive" in text or "Missing volume" in text:
+    if "Unsupported Method" in text:
+        message = ("The archive uses a compression method this 7-Zip does not support. "
+                   "For RAR archives install the RAR codec: sudo apt install 7zip-rar\n\n"
+                   + message)
+    elif "Unexpected end of archive" in text or "Missing volume" in text:
         message = ("The archive is truncated or a volume of a split archive is missing.\n\n"
                    + message)
     raise SevenZipError(message)

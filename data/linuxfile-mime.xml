@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mime-info xmlns="http://www.freedesktop.org/standards/shared-mime-info">
+  <!-- First volumes of split archives that have no MIME type of their own -->
+  <mime-type type="application/x-linuxfile-split">
+    <comment>Split archive volume</comment>
+    <generic-icon name="package-x-generic"/>
+    <glob pattern="*.001"/>
+    <glob pattern="*.00[2-9]"/>
+    <glob pattern="*.0[1-9][0-9]"/>
+    <glob pattern="*.z0[1-9]"/>
+    <glob pattern="*.z[1-9][0-9]"/>
+    <glob pattern="*.r0[0-9]"/>
+    <glob pattern="*.r[1-9][0-9]"/>
+  </mime-type>
+</mime-info>

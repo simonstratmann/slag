@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=linuxfile
+GenericName=Archive Browser
+Comment=Browse and extract archives (zip, rar, 7z, tar.gz, split archives)
+Exec=@EXEC@ %f
+Icon=package-x-generic
+Terminal=false
+Categories=Qt;KDE;Utility;Archiving;Compression;
+MimeType=application/zip;application/x-zip-compressed;application/vnd.rar;application/x-rar;application/x-rar-compressed;application/x-7z-compressed;application/x-tar;application/x-compressed-tar;application/x-bzip-compressed-tar;application/x-bzip2-compressed-tar;application/x-xz-compressed-tar;application/x-zstd-compressed-tar;application/x-lzma-compressed-tar;application/x-tarz;application/gzip;application/x-gzip;application/x-bzip;application/x-bzip2;application/x-xz;application/zstd;application/x-lzma;application/x-compress;application/x-lzip;application/x-cd-image;application/vnd.ms-cab-compressed;application/x-cpio;application/x-rpm;application/vnd.debian.binary-package;application/x-arj;application/x-lha;application/x-ms-wim;application/x-lzip-compressed-tar;application/x-bzip1-compressed-tar;application/x-bzip1;application/vnd.comicbook+zip;application/vnd.comicbook-rar;application/x-cb7;application/x-cbt;application/x-archive;application/x-lz4;application/x-lz4-compressed-tar;application/x-linuxfile-split;
+Keywords=archive;zip;rar;7z;tar;extract;

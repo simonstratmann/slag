@@ -2,7 +2,29 @@
 
 from __future__ import annotations
 
+import os
 import sys
+
+
+def archive_arguments(args: list[str]) -> list[str]:
+    """Positional file arguments: honours '--', accepts file:// URLs, and ignores
+    unknown options unless a file of that name exists."""
+    from PyQt6.QtCore import QUrl
+
+    result = []
+    only_files = False
+    for a in args:
+        if not only_files and a == "--":
+            only_files = True
+            continue
+        if not only_files and a.startswith("-") and not os.path.exists(a):
+            continue
+        if a.startswith("file:"):
+            url = QUrl(a)
+            if url.isLocalFile():
+                a = url.toLocalFile()
+        result.append(a)
+    return result
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -24,7 +46,7 @@ def main(argv: list[str] | None = None) -> int:
 
     window = MainWindow()
     window.show()
-    args = [a for a in app.arguments()[1:] if not a.startswith("-")]
+    args = archive_arguments(app.arguments()[1:])
     if args:
         window.open_path(args[0])
     return app.exec()
