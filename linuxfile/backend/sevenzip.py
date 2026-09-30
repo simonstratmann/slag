@@ -149,7 +149,8 @@ def _raise_for_error(rc: int, stdout: str, stderr: str, password: str) -> None:
             "Wrong password." if password else "This archive is password protected.",
             wrong_password=bool(password),
         )
-    if "Cannot open the file as archive" in text or "Can not open the file as archive" in text:
+    if ("Cannot open the file as archive" in text or "Can not open the file as archive" in text
+            or "Is not archive" in text):
         raise NotAnArchive("The file is not a supported archive.")
     lines = [l.strip() for l in stderr.split("\n") if l.strip()]
     message = "\n".join(lines) or f"7z failed with exit code {rc}"

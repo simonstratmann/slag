@@ -161,3 +161,20 @@ def odd_archives(tmp_path_factory):
     (root / "trunc.zip").write_bytes(full[: len(full) - 200])
     out["trunc"] = root / "trunc.zip"
     return out
+
+
+@pytest.fixture(autouse=True)
+def no_modal_dialogs(monkeypatch):
+    """A modal dialog would block the (offscreen) test run forever: fail instead."""
+    from PyQt6.QtWidgets import QDialog, QFileDialog, QInputDialog, QMessageBox
+
+    def fail(*args, **kwargs):
+        raise AssertionError(f"unexpected modal dialog: {args[1:3]!r}")
+
+    for name in ("critical", "warning", "information", "question"):
+        monkeypatch.setattr(QMessageBox, name, staticmethod(fail))
+    monkeypatch.setattr(QMessageBox, "exec", fail)
+    monkeypatch.setattr(QInputDialog, "getText", staticmethod(fail))
+    monkeypatch.setattr(QFileDialog, "getSaveFileName", staticmethod(fail))
+    monkeypatch.setattr(QFileDialog, "getExistingDirectory", staticmethod(fail))
+    monkeypatch.setattr(QFileDialog, "getOpenFileName", staticmethod(fail))

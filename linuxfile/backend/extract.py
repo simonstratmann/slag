@@ -44,6 +44,7 @@ class ExtractResult:
     skipped: list[Path] = field(default_factory=list)
     missing: list[str] = field(default_factory=list)  # archive paths 7z did not produce
     errors: list[str] = field(default_factory=list)  # 7z errors (items may be missing)
+    cancelled: bool = False  # cancelled while moving; ``extracted`` lists what was done
 
 
 def unique_name(path: Path) -> Path:
@@ -194,12 +195,17 @@ def extract_nodes(
             result.errors.append(str(exc))
         for node in nodes:
             if cancel is not None and cancel.is_set():
-                raise Cancelled()
+                result.cancelled = True
+                break
             src = staging.joinpath(*node.components)
             if not os.path.lexists(src):
                 result.missing.append(node.path)
                 continue
-            _move(src, target / node.name, on_conflict, result, top=True)
+            try:
+                _move(src, target / node.name, on_conflict, result, top=True)
+            except Cancelled:
+                result.cancelled = True
+                break
     finally:
         shutil.rmtree(staging, ignore_errors=True)
     return result

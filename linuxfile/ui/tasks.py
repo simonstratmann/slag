@@ -64,6 +64,8 @@ class _GuiCaller(QObject):
 
 
 _gui_caller: Optional[_GuiCaller] = None
+# Progress dialogs / show timers of running tasks, innermost last.
+_active: list[tuple[QProgressDialog, QTimer]] = []
 
 
 def call_in_gui_thread(fn: Callable[[], Any]) -> Any:
@@ -76,11 +78,22 @@ def call_in_gui_thread(fn: Callable[[], Any]) -> Any:
     box: dict[str, Any] = {}
 
     def job():
+        # Hide the progress dialog so it can't cover (or be confused with) the question.
+        hidden = []
+        for dialog, timer in _active:
+            hidden.append((dialog, timer, dialog.isVisible(), timer.isActive()))
+            timer.stop()
+            dialog.hide()
         try:
             box["result"] = fn()
         except BaseException as exc:  # noqa: BLE001
             box["error"] = exc
         finally:
+            for dialog, timer, was_visible, was_pending in hidden:
+                if was_visible:
+                    dialog.show()
+                elif was_pending:
+                    timer.start()
             done.set()
 
     _gui_caller.call.emit(job)
@@ -136,12 +149,14 @@ def run_blocking(parent: Optional[QWidget], title: str, fn: TaskFn, delay_ms: in
     app.installEventFilter(blocker)
     QApplication.setOverrideCursor(Qt.CursorShape.BusyCursor)
     thread = threading.Thread(target=worker, name="linuxfile-task", daemon=True)
+    _active.append((dialog, show_timer))
     try:
         thread.start()
         show_timer.start(delay_ms)
         loop.exec()  # the queued "done" signal quits it, even if emitted already
         thread.join()
     finally:
+        _active.remove((dialog, show_timer))
         show_timer.stop()
         QApplication.restoreOverrideCursor()
         app.removeEventFilter(blocker)

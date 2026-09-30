@@ -186,8 +186,9 @@ def test_extract_conflicts(sz, archives, tmp_path):
     extract_nodes(sz, str(archives["zip"]), [root.child("top.txt")], tmp_path, lambda d, s: ConflictAction.RENAME)
     assert (tmp_path / "top (1).txt").read_text() == "top"
 
-    with pytest.raises(Cancelled):
-        extract_nodes(sz, str(archives["zip"]), [root.child("top.txt")], tmp_path, lambda d, s: ConflictAction.CANCEL)
+    res = extract_nodes(sz, str(archives["zip"]), [root.child("emptydir"), root.child("top.txt")],
+                        tmp_path, lambda d, s: ConflictAction.CANCEL)
+    assert res.cancelled and res.extracted == [tmp_path / "emptydir"]
     # staging directory is always cleaned up
     assert not [p for p in tmp_path.iterdir() if p.name.startswith(".linuxfile")]
 

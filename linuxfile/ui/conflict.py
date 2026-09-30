@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import html
 import os
 from datetime import datetime
 from pathlib import Path
@@ -37,10 +38,11 @@ class ConflictResolver:
         return call_in_gui_thread(lambda: self._ask(dst, src))
 
     def _ask(self, dst: Path, src: Path) -> ConflictAction:
-        box = QMessageBox(QApplication.activeWindow() or self.parent)
+        box = QMessageBox(self.parent or QApplication.activeWindow())
         box.setIcon(QMessageBox.Icon.Question)
         box.setWindowTitle("File already exists")
-        box.setText(f"<b>{os.path.basename(dst)}</b> already exists in<br>{os.path.dirname(dst)}")
+        box.setText(f"<b>{html.escape(os.path.basename(dst))}</b> already exists in<br>"
+                    f"{html.escape(os.path.dirname(dst))}")
         box.setInformativeText(f"Existing: {_describe(dst)}\nFrom archive: {_describe(src)}")
         overwrite = box.addButton("&Overwrite", QMessageBox.ButtonRole.AcceptRole)
         skip = box.addButton("&Skip", QMessageBox.ButtonRole.RejectRole)

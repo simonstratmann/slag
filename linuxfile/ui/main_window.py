@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
+import html
 import os
+import subprocess
 from typing import Optional
 
-from PyQt6.QtCore import QItemSelectionModel, QSettings, Qt, QTimer
-from PyQt6.QtGui import QAction, QIcon, QKeySequence
+from PyQt6.QtCore import QItemSelectionModel, QSettings, Qt, QTimer, QUrl
+from PyQt6.QtGui import QAction, QDesktopServices, QIcon, QKeySequence
 from PyQt6.QtWidgets import (
-    QAbstractItemView, QFileDialog, QInputDialog, QLabel, QLineEdit, QMainWindow, QMenu,
+    QAbstractItemView, QApplication, QFileDialog, QInputDialog, QLabel, QLineEdit, QMainWindow, QMenu,
     QMessageBox, QToolBar, QTreeView,
 )
 
@@ -19,7 +21,9 @@ from ..backend.tree import Node
 from ..backend.volumes import is_archive_name
 from .archive_model import ArchiveModel, COL_NAME, format_size
 from .conflict import ConflictResolver
-from .extract_dialog import ExtractDialog, recent_targets, remember_target
+from .extract_dialog import ExtractDialog, recent_targets, remember_target, target_problem
+from .opened_files import OpenedFiles
+from .settings import SettingsDialog, build_editor_args, editor_command
 from .tasks import run_blocking
 
 APP_NAME = "linuxfile"
@@ -58,6 +62,10 @@ class MainWindow(QMainWindow):
         self.layer: Optional[Layer] = None
         self.current: Optional[Node] = None
         self.settings = QSettings()
+        self.opened = OpenedFiles(self)
+        app = QApplication.instance()
+        if app is not None:
+            app.applicationStateChanged.connect(self._on_app_state)
 
         self.model = ArchiveModel(self)
         self.view = FileView(self)
@@ -110,10 +118,18 @@ class MainWindow(QMainWindow):
         self.act_extract = self._action("&Extract…", "archive-extract", ["F5", "Ctrl+E"],
                                         self.extract_dialog,
                                         "Extract the selection (or everything on this level)")
+        self.act_open_outside = self._action("Open &Outside", "document-open", ["Shift+Return", "Shift+Enter"],
+                                             self.open_outside_current,
+                                             "Open with the associated application")
+        self.act_edit = self._action("&Edit", "document-edit", "F4", self.edit_current,
+                                     "Open in the configured editor (F4)")
+        self.act_settings = self._action("&Settings…", "configure", "Ctrl+,", self.settings_dialog)
         self.act_quit = self._action("&Quit", "application-exit", QKeySequence.StandardKey.Quit, self.close)
 
         menu = self.menuBar().addMenu("&File")
         menu.addAction(self.act_open)
+        menu.addSeparator()
+        menu.addAction(self.act_settings)
         menu.addSeparator()
         menu.addAction(self.act_quit)
         self.file_menu = menu
@@ -143,6 +159,9 @@ class MainWindow(QMainWindow):
             self.view.header().resizeSection(COL_NAME, 380)
 
     def closeEvent(self, event):  # noqa: N802
+        if not self.opened.confirm_close():
+            event.ignore()
+            return
         self.settings.setValue("window/geometry", self.saveGeometry())
         self.settings.setValue("window/header", self.view.header().saveState())
         self.session.close()
@@ -169,6 +188,9 @@ class MainWindow(QMainWindow):
         if layer is None:
             return False
         if self.layer is not None:
+            if not self.opened.confirm_discard(self.layer.outermost.cache_dirs()):
+                self.session.discard(layer)
+                return False
             self.session.discard(self.layer)
         self.layer = layer
         self._show_directory(layer.root)
@@ -285,25 +307,92 @@ class MainWindow(QMainWindow):
     def open_file_node(self, node: Node) -> None:
         """Enter on a file: archives are opened inside, other files externally."""
         if is_archive_name(node.name):
-            self.open_inside(node)
+            result = self.open_inside(node, quiet_not_archive=True)
+            if result is not _NOT_AN_ARCHIVE:
+                return
+        self.open_external(node)
+
+    def open_outside_current(self) -> None:
+        node = self._current_node()
+        if node is not None and not node.is_dir:
+            self.open_external(node)
+
+    def open_external(self, node: Node) -> bool:
+        """Extract to the temp cache and open with the associated application."""
+        path = self.extract_to_cache(node)
+        if path is None:
+            return False
+        self.opened.track(path, self._describe(node))
+        if not QDesktopServices.openUrl(QUrl.fromLocalFile(path)):
+            QMessageBox.warning(self, APP_NAME, f"No application found to open {node.name}.")
+            return False
+        return True
+
+    def edit_current(self) -> None:
+        node = self._current_node()
+        if node is not None and not node.is_dir:
+            self.edit(node)
+
+    def edit(self, node: Node) -> bool:
+        """F4: open a temp copy in the configured editor."""
+        path = self.extract_to_cache(node)
+        if path is None:
+            return False
+        self.opened.track(path, self._describe(node))
+        command = editor_command(self.settings)
+        try:
+            args = build_editor_args(command, path)
+            subprocess.Popen(args, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                             stderr=subprocess.DEVNULL, start_new_session=True)
+        except (OSError, ValueError) as exc:
+            QMessageBox.warning(self, APP_NAME,
+                                f"Could not start the editor \"{command}\":\n{exc}\n\n"
+                                "Configure it in File → Settings.")
+            return False
+        return True
+
+    def _describe(self, node: Node) -> str:
+        assert self.layer is not None
+        names = [layer.display_name for layer in self.layer.chain()]
+        return PATH_SEPARATOR.join(names + [node.path])
+
+    def settings_dialog(self) -> None:
+        SettingsDialog(self, self.settings).exec()
+
+    def _on_app_state(self, state) -> None:
+        if state == Qt.ApplicationState.ApplicationActive and self.isVisible():
+            # Defer: don't open a dialog from inside the activation event.
+            QTimer.singleShot(0, self.opened.check)
 
     def open_inside_current(self) -> None:
         node = self._current_node()
         if node is not None and not node.is_dir:
             self.open_inside(node)
 
-    def open_inside(self, node: Node) -> bool:
-        """Open a file of the current archive as a nested archive."""
+    def open_inside(self, node: Node, quiet_not_archive: bool = False):
+        """Open a file of the current archive as a nested archive.
+
+        Returns True on success, False on failure; with ``quiet_not_archive`` a file that
+        is no archive returns ``_NOT_AN_ARCHIVE`` instead of showing an error.
+        """
         assert self.layer is not None
         parent = self.layer
         if self.extract_to_cache(node) is None:
             return False
-        layer = self._with_password(
-            lambda pw: run_blocking(
-                self, f"Opening {node.name}…",
-                lambda progress, cancel: self.session.open_nested(parent, node, pw, progress, cancel)),
-            node.name,
-        )
+
+        def attempt(pw: str):
+            try:
+                return run_blocking(
+                    self, f"Opening {node.name}…",
+                    lambda progress, cancel: self.session.open_nested(parent, node, pw, progress, cancel))
+            except NotAnArchive:
+                if quiet_not_archive:
+                    return _NOT_AN_ARCHIVE
+                raise
+
+        layer = self._with_password(attempt, node.name)
+        if layer is _NOT_AN_ARCHIVE:
+            return layer
         if layer is None:
             return False
         self.layer = layer
@@ -360,9 +449,10 @@ class MainWindow(QMainWindow):
         if not nodes:
             return
         if len(nodes) == 1:
-            summary = f"Extract <b>{nodes[0].name}</b>"
+            summary = f"Extract <b>{html.escape(nodes[0].name)}</b>"
         else:
-            summary = f"Extract <b>{len(nodes)}</b> items from <b>{self.current.path or '/'}</b>"
+            summary = (f"Extract <b>{len(nodes)}</b> items from "
+                       f"<b>{html.escape(self.current.path or '/')}</b>")
         dlg = ExtractDialog(self, self.settings, self.default_target(), summary,
                             base_dir=self.default_target())
         if dlg.exec() != ExtractDialog.DialogCode.Accepted:
@@ -392,6 +482,8 @@ class MainWindow(QMainWindow):
             box.setDetailedText(details.strip())
             box.exec()
         msg = f"Extracted {len(result.extracted)} item(s) to {target}"
+        if result.cancelled:
+            msg = f"Cancelled. {len(result.extracted)} item(s) were extracted to {target}"
         if result.skipped:
             msg += f", skipped {len(result.skipped)}"
         self.statusBar().showMessage(msg, 8000)
@@ -401,14 +493,14 @@ class MainWindow(QMainWindow):
         if self.layer is None:
             return
         idx = self.view.indexAt(pos)
-        if idx.isValid() and self.model.is_parent_row(idx.row()):
-            return
         menu = QMenu(self)
-        node = self._current_node() if idx.isValid() else None
+        node = self.model.node_at(idx.row()) if idx.isValid() else None  # None for '..' 
         if node is not None:
             menu.addAction(self.act_enter)
             if not node.is_dir:
                 menu.addAction(self.act_open_inside)
+                menu.addAction(self.act_open_outside)
+                menu.addAction(self.act_edit)
             menu.addSeparator()
         menu.addAction(self.act_extract)
         recents = recent_targets(self.settings)
@@ -421,9 +513,14 @@ class MainWindow(QMainWindow):
 
     def _extract_to_recent(self, path: str) -> None:
         nodes = self.nodes_to_extract()
-        if nodes:
-            remember_target(self.settings, path)
-            self.extract_to(nodes, path)
+        if not nodes:
+            return
+        problem = target_problem(path)
+        if problem:
+            QMessageBox.warning(self, APP_NAME, f"Cannot extract to {path}:\n{problem}")
+            return
+        remember_target(self.settings, path)
+        self.extract_to(nodes, path)
 
     # -- selection / status -----------------------------------------------------------
 
@@ -463,3 +560,4 @@ class MainWindow(QMainWindow):
 
 
 _EMPTY_ROOT = Node("", True)
+_NOT_AN_ARCHIVE = object()
