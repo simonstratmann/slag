@@ -8,7 +8,7 @@ from linuxfile.backend.sevenzip import SevenZip
 
 
 def run(args, cwd):
-    subprocess.run(args, cwd=cwd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    subprocess.run(args, cwd=cwd, check=True, shell=isinstance(args, str), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 
 def make_tree(root: Path) -> Path:
@@ -75,6 +75,11 @@ def archives(tmp_path_factory):
     out["nested"] = root / "outer.zip"
     run(["7z", "a", "-psecret", str(root / "enc_outer.zip"), "inner/inner.zip"], cwd=nest)
     out["enc_outer"] = root / "enc_outer.zip"
+    splitnest = root / "splitnest"
+    splitnest.mkdir()
+    run("cp " + str(root) + "/split.7z.0* " + str(splitnest), cwd=root)
+    run(["zip", "-qr", str(root / "splitouter.zip"), "."], cwd=splitnest)
+    out["splitouter"] = root / "splitouter.zip"
     (root / "plain.txt").write_text("not an archive")
     out["plain"] = root / "plain.txt"
     return out

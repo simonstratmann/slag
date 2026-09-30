@@ -78,3 +78,41 @@ def is_archive_name(name: str) -> bool:
 # Single-stream compression formats: an archive of this type containing exactly one
 # entry is unwrapped automatically when that entry is itself an archive (tar.gz etc.).
 STREAM_TYPES = {"gzip", "bzip2", "xz", "zstd", "z", "lzma", "lzma86", "lz", "lzip", "brotli", "lz4"}
+
+
+def volume_set_key(name: str) -> str | None:
+    """Key shared by all volumes of one split archive (None if ``name`` is no volume).
+
+    ``x.part1.rar``/``x.part02.rar`` -> ``x|partrar``, ``x.7z.001`` -> ``x.7z|num``,
+    ``x.zip``/``x.z01`` -> ``x|zip``, ``x.rar``/``x.r00`` -> ``x|rar``.
+    """
+    lower = name.lower()
+    m = _PART_RAR_RE.match(lower)
+    if m:
+        return m.group("stem") + "|partrar"
+    m = _NUMBERED_RE.match(lower)
+    if m:
+        return m.group("stem") + "|num"
+    m = _ZIP_SPLIT_RE.match(lower)
+    if m:
+        return m.group("stem") + "|zip"
+    m = _RAR_OLD_RE.match(lower)
+    if m:
+        return m.group("stem") + "|rar"
+    if lower.endswith(".zip"):
+        return lower[:-4] + "|zip"
+    if lower.endswith(".rar"):
+        return lower[:-4] + "|rar"
+    return None
+
+
+def sibling_volumes(name: str, sibling_names: list[str]) -> list[str]:
+    """All names in ``sibling_names`` (including ``name``) belonging to the same split set.
+
+    Returns just ``[name]`` when it is not part of a multi-volume set.
+    """
+    key = volume_set_key(name)
+    if key is None:
+        return [name]
+    same = [n for n in sibling_names if volume_set_key(n) == key]
+    return same if len(same) > 1 else [name]
