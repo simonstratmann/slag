@@ -57,6 +57,10 @@ class Layer:
             layer = layer.parent
         return list(reversed(layers))
 
+    def nested(self) -> list["Layer"]:
+        """Archives opened from this layer (directly)."""
+        return list(self._children.values())
+
     def cache_dirs(self) -> list[str]:
         dirs = [self.cache_dir] if self.cache_dir else []
         for child in self._children.values():

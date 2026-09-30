@@ -11,7 +11,7 @@ from PyQt6.QtCore import QItemSelectionModel, QSettings, Qt, QTimer, QUrl
 from PyQt6.QtGui import QAction, QDesktopServices, QIcon, QKeySequence
 from PyQt6.QtWidgets import (
     QAbstractItemView, QApplication, QFileDialog, QInputDialog, QLabel, QLineEdit, QMainWindow, QMenu,
-    QMessageBox, QToolBar, QTreeView,
+    QMessageBox, QSplitter, QToolBar, QTreeView,
 )
 
 from ..backend.extract import ExtractResult, extract_nodes
@@ -25,6 +25,7 @@ from .extract_dialog import ExtractDialog, recent_targets, remember_target, targ
 from .opened_files import OpenedFiles
 from .settings import SettingsDialog, build_editor_args, editor_command
 from .tasks import run_blocking
+from .tree_model import ArchiveTreeModel
 
 APP_NAME = "SLAG"  # Simon's Little Archive GUI
 APP_ID = "slag"  # config/cache dirs, desktop file
@@ -56,6 +57,23 @@ class FileView(QTreeView):
         super().keyPressEvent(event)
 
 
+class NavTree(QTreeView):
+    """Navigation pane left of the file list."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setHeaderHidden(True)
+        self.setUniformRowHeights(True)
+        self.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+
+    def keyPressEvent(self, event):  # noqa: N802
+        if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
+            event.ignore()
+            return
+        super().keyPressEvent(event)
+
+
 class MainWindow(QMainWindow):
     def __init__(self, session: Optional[Session] = None):
         super().__init__()
@@ -79,7 +97,19 @@ class MainWindow(QMainWindow):
         self._status_timer.timeout.connect(self._update_status)
         self.view.selectionModel().selectionChanged.connect(self._status_timer.start)
         self.view.sortByColumn(COL_NAME, Qt.SortOrder.AscendingOrder)
-        self.setCentralWidget(self.view)
+
+        self.tree_model = ArchiveTreeModel(self)
+        self.tree = NavTree(self)
+        self.tree.setModel(self.tree_model)
+        self.tree.clicked.connect(self._on_tree_activated)
+
+        self.splitter = QSplitter(Qt.Orientation.Horizontal, self)
+        self.splitter.setObjectName("mainSplitter")
+        self.splitter.addWidget(self.tree)
+        self.splitter.addWidget(self.view)
+        self.splitter.setStretchFactor(1, 1)
+        self.splitter.setSizes([250, 750])
+        self.setCentralWidget(self.splitter)
 
         self.address = QLineEdit(self)
         self.address.setReadOnly(True)
@@ -158,6 +188,9 @@ class MainWindow(QMainWindow):
             self.view.header().restoreState(header_state)
         else:
             self.view.header().resizeSection(COL_NAME, 380)
+        splitter_state = self.settings.value("window/splitter")
+        if splitter_state is not None:
+            self.splitter.restoreState(splitter_state)
 
     def closeEvent(self, event):  # noqa: N802
         if not self.opened.confirm_close():
@@ -165,6 +198,7 @@ class MainWindow(QMainWindow):
             return
         self.settings.setValue("window/geometry", self.saveGeometry())
         self.settings.setValue("window/header", self.view.header().saveState())
+        self.settings.setValue("window/splitter", self.splitter.saveState())
         self.session.close()
         super().closeEvent(event)
 
@@ -232,8 +266,10 @@ class MainWindow(QMainWindow):
 
     # -- navigation -------------------------------------------------------------------
 
-    def _show_directory(self, node: Optional[Node], select: Optional[Node] = None) -> None:
+    def _show_directory(self, node: Optional[Node], select: Optional[Node] = None,
+                        focus_list: bool = True) -> None:
         self.current = node
+        self._sync_tree()
         if node is None:
             self.model.set_directory(_EMPTY_ROOT, has_parent_row=False)
             self.address.setText("")
@@ -256,8 +292,53 @@ class MainWindow(QMainWindow):
                     idx, QItemSelectionModel.SelectionFlag.ClearAndSelect
                     | QItemSelectionModel.SelectionFlag.Rows)
             self.view.scrollTo(idx)
-        self.view.setFocus()
+        if focus_list:
+            self.view.setFocus()
         self._update_status()
+
+    def _sync_tree(self) -> None:
+        """Expand the tree down to the current folder (or inner archive) and mark it."""
+        model = self.tree_model
+        expanded = [n for n in model.nodes() if self.tree.isExpanded(model.index_of(n))]
+        outer = self.layer.outermost if self.layer is not None and self.current is not None else None
+        if model.set_layers(outer):
+            # Rebuilt (e.g. an inner archive was opened): keep what the user had expanded.
+            for n in expanded:
+                idx = model.index_of(n)
+                if idx.isValid():
+                    self.tree.expand(idx)
+        marked = None
+        if self.current is not None:
+            # The top of an inner archive is shown as the archive's node.
+            marked = self.current if self.current.parent is not None else self.layer.parent_node
+        model.set_current(marked)
+        idx = model.index_of(marked)
+        if not idx.isValid():
+            # On the first level: nothing above it to mark.
+            self.tree.selectionModel().clear()
+            self.tree.scrollToTop()
+            return
+        parent = idx
+        while parent.isValid():
+            self.tree.expand(parent)
+            parent = parent.parent()
+        self.tree.selectionModel().setCurrentIndex(
+            idx, QItemSelectionModel.SelectionFlag.ClearAndSelect)
+        self.tree.scrollTo(idx)
+
+    def _on_tree_activated(self, index) -> None:
+        node = self.tree_model.node_of(index)
+        if node is None:
+            return
+        nested = self.tree_model.nested_layer(node)
+        if nested is not None:
+            self.layer = nested
+            self._show_directory(nested.root, focus_list=False)
+            return
+        layer = self.tree_model.layer_of(node)
+        if layer is not None:
+            self.layer = layer
+            self._show_directory(node, focus_list=False)
 
     def _address_text(self) -> str:
         assert self.layer is not None and self.current is not None
@@ -286,6 +367,9 @@ class MainWindow(QMainWindow):
         self._open_row(index.row())
 
     def open_current(self) -> None:
+        if self.tree.hasFocus():
+            self._on_tree_activated(self.tree.currentIndex())
+            return
         idx = self.view.currentIndex()
         if idx.isValid():
             self._open_row(idx.row())
