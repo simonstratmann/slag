@@ -46,7 +46,7 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     window = MainWindow()
-    window.show()
+    window.showMaximized()
     args = archive_arguments(app.arguments()[1:])
     if args:
         window.open_path(args[0])
