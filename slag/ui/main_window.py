@@ -23,13 +23,15 @@ from .archive_model import ArchiveModel, COL_NAME, format_size
 from .conflict import ConflictResolver
 from .extract_dialog import ExtractDialog, recent_targets, remember_target, target_problem
 from .opened_files import OpenedFiles
-from .settings import SettingsDialog, build_editor_args, editor_command
+from .settings import SettingsDialog, build_editor_args, editor_command, web_tree_limit_mb
 from .tasks import run_blocking
 from .tree_model import ArchiveTreeModel
 
 APP_NAME = "SLAG"  # Simon's Little Archive GUI
 APP_ID = "slag"  # config/cache dirs, desktop file
 PATH_SEPARATOR = " › "
+# Opened from a copy of the whole archive, so relative links to other files work.
+WEB_PAGE_EXTENSIONS = (".html", ".htm", ".xhtml", ".shtml")
 
 
 class FileView(QTreeView):
@@ -239,10 +241,12 @@ class MainWindow(QMainWindow):
             box.setDetailedText(layer.warning)
             box.exec()
 
-    def _with_password(self, attempt, name: str):
+    def _with_password(self, attempt, name: str, without_password=None):
         """Call ``attempt(password)``, prompting for a password while it is required.
 
-        Returns the result, or None when cancelled / failed (errors are shown).
+        Returns the result, or None when cancelled / failed (errors are shown). When the
+        password prompt is cancelled, the result of ``without_password()`` is returned
+        if given.
         """
         password = ""
         while True:
@@ -254,7 +258,7 @@ class MainWindow(QMainWindow):
                     prompt = f"Wrong password. Enter the password for {name}:"
                 password, ok = QInputDialog.getText(self, "Password", prompt, QLineEdit.EchoMode.Password)
                 if not ok:
-                    return None
+                    return without_password() if without_password is not None else None
             except Cancelled:
                 return None
             except NotAnArchive:
@@ -401,7 +405,10 @@ class MainWindow(QMainWindow):
 
     def open_external(self, node: Node) -> bool:
         """Extract to the temp cache and open with the associated application."""
-        path = self.extract_to_cache(node)
+        if node.name.lower().endswith(WEB_PAGE_EXTENSIONS):
+            path = self.extract_web_page(node)
+        else:
+            path = self.extract_to_cache(node)
         if path is None:
             return False
         self.opened.track(path, self._describe(node))
@@ -484,9 +491,10 @@ class MainWindow(QMainWindow):
         self._show_warning(layer)
         return True
 
-    def with_layer_password(self, layer: Layer, fn):
+    def with_layer_password(self, layer: Layer, fn, without_password=None):
         """Run ``fn()`` (which uses ``layer.password``), prompting for the password of
-        ``layer`` if an encrypted entry needs it. Returns None on failure/cancel."""
+        ``layer`` if an encrypted entry needs it. Returns None on failure/cancel, or the
+        result of ``without_password()`` when the password prompt is cancelled."""
 
         def attempt(pw: str):
             old = layer.password
@@ -498,7 +506,7 @@ class MainWindow(QMainWindow):
                 layer.password = old
                 raise
 
-        return self._with_password(attempt, layer.display_name)
+        return self._with_password(attempt, layer.display_name, without_password)
 
     def extract_to_cache(self, node: Node, fresh: bool = False) -> Optional[str]:
         """Extract one file of the current layer into the temp cache; returns its path."""
@@ -510,6 +518,38 @@ class MainWindow(QMainWindow):
                 self, f"Extracting {node.name}…",
                 lambda progress, cancel: self.session.extract_to_cache(
                     layer, node, progress=progress, cancel=cancel, fresh=fresh)),
+        )
+
+    def extract_web_page(self, node: Node) -> Optional[str]:
+        """Extract the whole current layer so the page's linked files load as well.
+
+        Archives above the configured size ask first; the user may extract the page alone.
+        """
+        assert self.layer is not None
+        layer = self.layer
+        size = layer.root.total_size
+        if not self.session.has_tree(layer) and size > web_tree_limit_mb(self.settings) * 1024 * 1024:
+            box = QMessageBox(QMessageBox.Icon.Question, APP_NAME,
+                              f"Extract the whole archive ({format_size(size)}) so that "
+                              f"{node.name} can load its images, styles and scripts?",
+                              parent=self)
+            whole = box.addButton("Extract Whole Archive", QMessageBox.ButtonRole.AcceptRole)
+            single = box.addButton("Only This File", QMessageBox.ButtonRole.AcceptRole)
+            box.addButton(QMessageBox.StandardButton.Cancel)
+            box.setDefaultButton(whole)
+            box.exec()
+            if box.clickedButton() is single:
+                return self.extract_to_cache(node)
+            if box.clickedButton() is not whole:
+                return None
+        return self.with_layer_password(
+            layer,
+            lambda: run_blocking(
+                self, f"Extracting {layer.display_name}…",
+                lambda progress, cancel: self.session.extract_in_tree(
+                    layer, node, progress=progress, cancel=cancel)),
+            # Only other files are encrypted: open the page without them.
+            without_password=None if node.encrypted else lambda: self.extract_to_cache(node),
         )
 
     def _current_node(self) -> Optional[Node]:

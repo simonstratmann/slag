@@ -15,6 +15,8 @@ from .extract_dialog import DEFAULT_RECENT_COUNT, recent_targets
 
 EDITOR_KEY = "editor/command"
 RECENT_COUNT_KEY = "extract/recentCount"
+WEB_TREE_LIMIT_KEY = "open/webPageTreeLimitMB"
+DEFAULT_WEB_TREE_LIMIT_MB = 200
 
 
 def default_editor() -> str:
@@ -50,6 +52,13 @@ def recent_count(settings: QSettings) -> int:
         return DEFAULT_RECENT_COUNT
 
 
+def web_tree_limit_mb(settings: QSettings) -> int:
+    try:
+        return int(settings.value(WEB_TREE_LIMIT_KEY, DEFAULT_WEB_TREE_LIMIT_MB))
+    except (TypeError, ValueError):
+        return DEFAULT_WEB_TREE_LIMIT_MB
+
+
 class SettingsDialog(QDialog):
     def __init__(self, parent: QWidget | None, settings: QSettings):
         super().__init__(parent)
@@ -72,6 +81,16 @@ class SettingsDialog(QDialog):
         self.recent_spin.setValue(recent_count(settings))
         form.addRow("Recent extract targets:", self.recent_spin)
 
+        self.web_limit_spin = QSpinBox(self)
+        self.web_limit_spin.setRange(0, 1_000_000)
+        self.web_limit_spin.setSuffix(" MB")
+        self.web_limit_spin.setValue(web_tree_limit_mb(settings))
+        form.addRow("Web pages: extract whole archive up to:", self.web_limit_spin)
+        web_hint = QLabel("Opening an HTML file extracts the whole archive, so the browser finds "
+                          "its images, styles and scripts. Larger archives ask first.", self)
+        web_hint.setWordWrap(True)
+        form.addRow("", web_hint)
+
         layout.addLayout(form)
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel, self)
@@ -93,6 +112,7 @@ class SettingsDialog(QDialog):
         count = self.recent_spin.value()
         self.settings.setValue(RECENT_COUNT_KEY, count)
         self.settings.setValue("extract/recent", recent_targets(self.settings)[:count])
+        self.settings.setValue(WEB_TREE_LIMIT_KEY, self.web_limit_spin.value())
         super().accept()
 
 

@@ -6,12 +6,15 @@ from __future__ import annotations
 import itertools
 import os
 import shutil
+import stat
 import tempfile
 import threading
 from dataclasses import dataclass, field
 from typing import Optional
 
-from .sevenzip import NotAnArchive, PasswordRequired, ProgressCallback, SevenZip, SevenZipError
+from .sevenzip import (
+    Cancelled, NotAnArchive, PasswordRequired, ProgressCallback, SevenZip, SevenZipError,
+)
 from .tree import Node, build_tree
 from .volumes import STREAM_TYPES, first_volume, sibling_volumes
 
@@ -38,6 +41,9 @@ class Layer:
     warning_shown: bool = False
     # Extracted files of this layer: id(node) -> path in the cache
     _cached: dict[int, str] = field(default_factory=dict, repr=False)
+    # Whole layer extracted into the cache (see Session.extract_in_tree)
+    _tree_dir: str = field(default="", repr=False)
+    _tree_damaged: bool = field(default=False, repr=False)  # 7z reported errors
     # Nested archives opened from this layer: id(node) -> Layer
     _children: dict[int, "Layer"] = field(default_factory=dict, repr=False)
 
@@ -263,3 +269,62 @@ class Session:
             raise FileNotFoundError(f"7z did not extract {node.path}")
         layer._cached[key] = path
         return path
+
+    def extract_in_tree(
+        self,
+        layer: Layer,
+        node: Node,
+        progress: Optional[ProgressCallback] = None,
+        cancel: Optional[threading.Event] = None,
+    ) -> str:
+        """Extract the whole layer into the cache and return the path of ``node`` in it.
+
+        For files that refer to other files of the archive by relative paths (web pages).
+        The tree is extracted once per layer; files in it are not executable. Damaged
+        entries are left out, but ``node`` itself must be intact.
+        """
+        if not self.has_tree(layer):
+            tree_dir = os.path.join(layer.cache_dir, f"t{self._next()}")
+            os.makedirs(tree_dir)
+            damaged = False
+            try:
+                try:
+                    self.sevenzip.extract(layer.archive_path, tree_dir, password=layer.password,
+                                          progress=progress, cancel=cancel)
+                except (Cancelled, PasswordRequired, NotAnArchive):
+                    raise
+                except SevenZipError:
+                    # E.g. a CRC error in one file: keep everything else.
+                    damaged = True
+            except BaseException:
+                shutil.rmtree(tree_dir, ignore_errors=True)
+                raise
+            _strip_exec_bits_tree(tree_dir)
+            layer._tree_dir = tree_dir
+            layer._tree_damaged = damaged
+        if layer._tree_damaged:
+            # 7z writes files that fail the CRC check as well: extracting the file alone
+            # raises if it is one of the damaged ones.
+            self.extract_to_cache(layer, node, progress=progress, cancel=cancel)
+        path = os.path.join(layer._tree_dir, *node.components)
+        if not os.path.lexists(path):
+            raise FileNotFoundError(f"7z did not extract {node.path}")
+        return path
+
+    @staticmethod
+    def has_tree(layer: Layer) -> bool:
+        """True when ``extract_in_tree`` needs no extraction for ``layer``."""
+        return bool(layer._tree_dir) and os.path.isdir(layer._tree_dir)
+
+
+def _strip_exec_bits_tree(root: str) -> None:
+    """Never leave executables from an (untrusted) archive next to an opened file."""
+    for dirpath, _dirnames, filenames in os.walk(root):
+        for name in filenames:
+            path = os.path.join(dirpath, name)
+            try:
+                st = os.lstat(path)
+                if stat.S_ISREG(st.st_mode) and st.st_mode & 0o111:
+                    os.chmod(path, st.st_mode & ~0o111)
+            except OSError:
+                pass

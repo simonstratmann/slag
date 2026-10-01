@@ -6,7 +6,7 @@ from PyQt6.QtCore import QSettings
 
 from slag.ui import main_window as mw
 from slag.ui.opened_files import OpenedFiles
-from slag.ui.settings import EDITOR_KEY, build_editor_args
+from slag.ui.settings import EDITOR_KEY, WEB_TREE_LIMIT_KEY, build_editor_args
 
 
 @pytest.fixture
@@ -225,3 +225,67 @@ def test_settings_dialog(qtbot, isolated_settings):
     dlg.accept()
     assert s.value(EDITOR_KEY) == "konsole -e nvim %f"
     assert int(s.value(RECENT_COUNT_KEY)) == 3
+
+
+@pytest.fixture
+def web_zip(tmp_path):
+    import zipfile
+    path = tmp_path / "web.zip"
+    with zipfile.ZipFile(path, "w") as z:
+        z.writestr("site/index.html", '<link href="../shared/a.css">')
+        z.writestr("shared/a.css", "x" * 3_000_000)
+    return path
+
+
+def test_enter_on_web_page_extracts_whole_archive(window, web_zip, opened_urls):
+    window.open_path(str(web_zip))
+    window.open_external(window.layer.root.find("site/index.html"))
+    page, = opened_urls
+    assert page.endswith("/site/index.html")
+    assert os.path.isfile(os.path.join(os.path.dirname(page), "..", "shared", "a.css"))
+
+
+def _answer_question(monkeypatch, button_text):
+    asked = []
+
+    def exec_(box):
+        asked.append(box.text())
+        for b in box.buttons():
+            if b.text().replace("&", "") == button_text:
+                box._clicked = b
+        return 0
+
+    monkeypatch.setattr(mw.QMessageBox, "exec", exec_)
+    monkeypatch.setattr(mw.QMessageBox, "clickedButton", lambda box: getattr(box, "_clicked", None))
+    return asked
+
+
+@pytest.mark.parametrize("answer, opened, linked", [
+    ("Extract Whole Archive", True, True),
+    ("Only This File", True, False),
+    ("Cancel", False, False),
+])
+def test_large_archive_asks_before_extracting_web_page(window, web_zip, opened_urls, monkeypatch,
+                                                       answer, opened, linked):
+    QSettings().setValue(WEB_TREE_LIMIT_KEY, 1)
+    asked = _answer_question(monkeypatch, answer)
+    window.open_path(str(web_zip))
+    window.open_external(window.layer.root.find("site/index.html"))
+    assert len(asked) == 1 and "whole archive" in asked[0]
+    assert bool(opened_urls) == opened
+    if opened:
+        css = os.path.join(os.path.dirname(opened_urls[0]), "..", "shared", "a.css")
+        assert os.path.isfile(css) == linked
+
+
+@pytest.mark.parametrize("password, linked", [("secret", True), (None, False)])
+def test_web_page_in_partly_encrypted_archive(window, tmp_path, opened_urls, monkeypatch,
+                                              password, linked):
+    from tests.test_session import partly_encrypted_zip
+    monkeypatch.setattr(mw.QInputDialog, "getText",
+                        lambda *a, **k: (password or "", password is not None))
+    window.open_path(str(partly_encrypted_zip(tmp_path)))
+    window.open_external(window.layer.root.find("site/index.html"))
+    page, = opened_urls
+    assert open(page).read() == "<p>page</p>"
+    assert os.path.isfile(os.path.join(os.path.dirname(page), "a.css")) == linked

@@ -33,12 +33,16 @@ Python 3 + PyQt6, with the `7z` command line tool (7-Zip) doing all archive work
 | Backspace / Alt+Up     | parent folder / leave nested archive                           |
 | F5 / Ctrl+E            | extract…                                                       |
 | Ctrl+O                 | open archive                                                   |
-| Ctrl+,                 | settings (editor command, number of recent targets)            |
+| Ctrl+,                 | settings (editor command, recent targets, web page size limit) |
 
 Files opened with Enter/F4 are temporary copies (in `~/.cache/slag`, without executable
 bits); the archive is never modified. If you edit such a copy, SLAG tells you and offers to
 save a copy elsewhere (also on exit). Temporary copies stay available until SLAG is closed,
 even when another archive is opened.
+
+Web pages (`.html`, `.htm`, `.xhtml`, `.shtml`) are opened from a temporary copy of the whole
+archive, so the browser finds their images, styles and scripts. For archives above a size
+limit (default 200 MB, see settings) SLAG asks first and can open the page alone instead.
 
 The editor command may contain `%f` for the file; otherwise the file is appended
 (e.g. `kate`, `konsole -e nvim %f`).
