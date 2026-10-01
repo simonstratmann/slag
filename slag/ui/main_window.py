@@ -529,14 +529,16 @@ class MainWindow(QMainWindow):
     def extract_web_page(self, node: Node) -> Optional[str]:
         """Extract the whole current layer so the page's linked files load as well.
 
-        Archives above the configured size ask first; the user may extract the page alone.
+        Archive files above the configured size ask first; the user may extract the page
+        alone.
         """
         assert self.layer is not None
         layer = self.layer
-        size = layer.root.total_size
+        size = layer.archive_size
         if not self.session.has_tree(layer) and size > web_tree_limit_mb(self.settings) * 1024 * 1024:
             box = QMessageBox(QMessageBox.Icon.Question, APP_NAME,
-                              f"Extract the whole archive ({format_size(size)}) so that "
+                              f"Extract the whole archive ({format_size(size)}, "
+                              f"{format_size(layer.root.total_size)} unpacked) so that "
                               f"{node.name} can load its images, styles and scripts?",
                               parent=self)
             whole = box.addButton("Extract Whole Archive", QMessageBox.ButtonRole.AcceptRole)

@@ -231,13 +231,16 @@ def test_settings_dialog(qtbot, isolated_settings):
 def web_zip(tmp_path):
     import zipfile
     path = tmp_path / "web.zip"
-    with zipfile.ZipFile(path, "w") as z:
+    with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as z:
         z.writestr("site/index.html", '<link href="../shared/a.css">')
         z.writestr("shared/a.css", "x" * 3_000_000)
     return path
 
 
-def test_enter_on_web_page_extracts_whole_archive(window, web_zip, opened_urls):
+def test_enter_on_web_page_extracts_whole_archive(window, web_zip, opened_urls, monkeypatch):
+    # unpacked 3 MB but a small file: no question with a 1 MB limit
+    QSettings().setValue(WEB_TREE_LIMIT_KEY, 1)
+    monkeypatch.setattr(mw.QMessageBox, "exec", lambda box: pytest.fail(box.text()))
     window.open_path(str(web_zip))
     window.open_external(window.layer.root.find("site/index.html"))
     page, = opened_urls
@@ -267,7 +270,7 @@ def _answer_question(monkeypatch, button_text):
 ])
 def test_large_archive_asks_before_extracting_web_page(window, web_zip, opened_urls, monkeypatch,
                                                        answer, opened, linked):
-    QSettings().setValue(WEB_TREE_LIMIT_KEY, 1)
+    QSettings().setValue(WEB_TREE_LIMIT_KEY, 0)  # any archive is "large"
     asked = _answer_question(monkeypatch, answer)
     window.open_path(str(web_zip))
     window.open_external(window.layer.root.find("site/index.html"))

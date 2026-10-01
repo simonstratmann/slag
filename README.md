@@ -41,8 +41,8 @@ save a copy elsewhere (also on exit). Temporary copies stay available until SLAG
 even when another archive is opened.
 
 Web pages (`.html`, `.htm`, `.xhtml`, `.shtml`) are opened from a temporary copy of the whole
-archive, so the browser finds their images, styles and scripts. For archives above a size
-limit (default 200 MB, see settings) SLAG asks first and can open the page alone instead.
+archive, so the browser finds their images, styles and scripts. For archive files above a size
+limit (default 150 MB, see settings) SLAG asks first and can open the page alone instead.
 
 The editor command may contain `%f` for the file; otherwise the file is appended
 (e.g. `kate`, `konsole -e nvim %f`).

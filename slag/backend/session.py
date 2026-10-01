@@ -67,6 +67,16 @@ class Layer:
         """Archives opened from this layer (directly)."""
         return list(self._children.values())
 
+    @property
+    def archive_size(self) -> int:
+        """Size of the archive file(s) on disk; all volumes of a split archive."""
+        directory, name = os.path.split(self.archive_path)
+        try:
+            names = sibling_volumes(name, os.listdir(directory))
+            return sum(os.path.getsize(os.path.join(directory, n)) for n in names)
+        except OSError:
+            return 0
+
     def cache_dirs(self) -> list[str]:
         dirs = [self.cache_dir] if self.cache_dir else []
         for child in self._children.values():

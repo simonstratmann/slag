@@ -202,3 +202,12 @@ def test_extract_in_tree_partly_encrypted(sz, tmp_path):
     layer.password = "secret"
     page = s.extract_in_tree(layer, node)
     assert open(os.path.join(os.path.dirname(page), "a.css")).read() == "css"
+
+
+def test_archive_size_counts_all_volumes(sz, archives, tmp_path):
+    s = Session(sz, cache_root=str(tmp_path / "c"))
+    layer = s.open_file(str(archives["split7z"]))
+    directory = os.path.dirname(layer.archive_path)
+    volumes = [n for n in os.listdir(directory) if n.startswith("split.7z.")]
+    assert len(volumes) > 1
+    assert layer.archive_size == sum(os.path.getsize(os.path.join(directory, n)) for n in volumes)

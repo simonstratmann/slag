@@ -15,8 +15,8 @@ from .extract_dialog import DEFAULT_RECENT_COUNT, recent_targets
 
 EDITOR_KEY = "editor/command"
 RECENT_COUNT_KEY = "extract/recentCount"
-WEB_TREE_LIMIT_KEY = "open/webPageTreeLimitMB"
-DEFAULT_WEB_TREE_LIMIT_MB = 200
+WEB_TREE_LIMIT_KEY = "open/webPageArchiveLimitMB"
+DEFAULT_WEB_TREE_LIMIT_MB = 150
 
 
 def default_editor() -> str:
@@ -85,9 +85,10 @@ class SettingsDialog(QDialog):
         self.web_limit_spin.setRange(0, 1_000_000)
         self.web_limit_spin.setSuffix(" MB")
         self.web_limit_spin.setValue(web_tree_limit_mb(settings))
-        form.addRow("Web pages: extract whole archive up to:", self.web_limit_spin)
+        form.addRow("Web pages: ask for archives over:", self.web_limit_spin)
         web_hint = QLabel("Opening an HTML file extracts the whole archive, so the browser finds "
-                          "its images, styles and scripts. Larger archives ask first.", self)
+                          "its images, styles and scripts. For larger archive files SLAG asks "
+                          "first.", self)
         web_hint.setWordWrap(True)
         form.addRow("", web_hint)
 
