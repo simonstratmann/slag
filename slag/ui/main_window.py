@@ -14,6 +14,7 @@ from PyQt6.QtWidgets import (
     QMessageBox, QSplitter, QToolBar, QTreeView,
 )
 
+from ..build_info import build_info
 from ..backend.extract import ExtractResult, extract_nodes
 from ..backend.sevenzip import Cancelled, NotAnArchive, PasswordRequired, SevenZipError
 from ..backend.session import Layer, Session
@@ -119,6 +120,11 @@ class MainWindow(QMainWindow):
 
         self.status_label = QLabel(self)
         self.statusBar().addWidget(self.status_label, 1)
+        info = build_info()
+        self.build_label = QLabel(info.text if info else "", self)
+        self.build_label.setToolTip(info.tooltip if info else "")
+        self.build_label.setEnabled(False)  # greyed out: not part of the archive status
+        self.statusBar().addPermanentWidget(self.build_label)
 
         self._create_actions()
         self.setAcceptDrops(True)
