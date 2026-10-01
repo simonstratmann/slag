@@ -234,6 +234,10 @@ def web_zip(tmp_path):
     with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as z:
         z.writestr("site/index.html", '<link href="../shared/a.css">')
         z.writestr("shared/a.css", "x" * 3_000_000)
+        z.writestr("docs/api/page.html", '<img src="../img/a.png"><script src="x.js">')
+        z.writestr("docs/api/x.js", "1")
+        z.writestr("docs/img/a.png", "png")
+        z.writestr("other/b.txt", "b")
     return path
 
 
@@ -263,22 +267,37 @@ def _answer_question(monkeypatch, button_text):
     return asked
 
 
-@pytest.mark.parametrize("answer, opened, linked", [
-    ("Extract Whole Archive", True, True),
-    ("Only This File", True, False),
-    ("Cancel", False, False),
+@pytest.mark.parametrize("answer, extracted", [
+    ("Extract Whole Archive", {"docs", "other", "shared", "site"}),
+    ("Only This Folder", {"docs"}),  # page.html links to ../img: docs/, not docs/api/
+    ("Cancel", None),
 ])
 def test_large_archive_asks_before_extracting_web_page(window, web_zip, opened_urls, monkeypatch,
-                                                       answer, opened, linked):
+                                                       answer, extracted):
     QSettings().setValue(WEB_TREE_LIMIT_KEY, 0)  # any archive is "large"
     asked = _answer_question(monkeypatch, answer)
     window.open_path(str(web_zip))
-    window.open_external(window.layer.root.find("site/index.html"))
-    assert len(asked) == 1 and "whole archive" in asked[0]
-    assert bool(opened_urls) == opened
-    if opened:
-        css = os.path.join(os.path.dirname(opened_urls[0]), "..", "shared", "a.css")
-        assert os.path.isfile(css) == linked
+    window.open_external(window.layer.root.find("docs/api/page.html"))
+    assert len(asked) == 1 and "whole archive" in asked[0] and "<tt>docs/</tt>" in asked[0]
+    if extracted is None:
+        assert opened_urls == []
+        return
+    page, = opened_urls
+    root = page[:-len("docs/api/page.html")]
+    assert set(os.listdir(root)) == extracted
+    assert os.path.isfile(os.path.join(root, "docs", "img", "a.png"))
+    assert os.path.isfile(os.path.join(root, "docs", "api", "x.js"))
+
+
+def test_large_archive_page_linking_to_top_offers_no_folder(window, web_zip, opened_urls,
+                                                             monkeypatch):
+    QSettings().setValue(WEB_TREE_LIMIT_KEY, 0)
+    buttons = []
+    monkeypatch.setattr(mw.QMessageBox, "exec",
+                        lambda box: buttons.extend(b.text().replace("&", "") for b in box.buttons()))
+    window.open_path(str(web_zip))
+    window.open_external(window.layer.root.find("site/index.html"))  # ../shared: top level
+    assert "Only This Folder" not in buttons and "Extract Whole Archive" in buttons
 
 
 @pytest.mark.parametrize("password, linked", [("secret", True), (None, False)])

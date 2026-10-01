@@ -41,9 +41,9 @@ class Layer:
     warning_shown: bool = False
     # Extracted files of this layer: id(node) -> path in the cache
     _cached: dict[int, str] = field(default_factory=dict, repr=False)
-    # Whole layer extracted into the cache (see Session.extract_in_tree)
-    _tree_dir: str = field(default="", repr=False)
-    _tree_damaged: bool = field(default=False, repr=False)  # 7z reported errors
+    # Folders extracted with their full paths (see Session.extract_in_tree):
+    # id(folder node) -> (dir in the cache, 7z reported errors)
+    _trees: dict[int, tuple[str, bool]] = field(default_factory=dict, repr=False)
     # Nested archives opened from this layer: id(node) -> Layer
     _children: dict[int, "Layer"] = field(default_factory=dict, repr=False)
 
@@ -284,23 +284,32 @@ class Session:
         self,
         layer: Layer,
         node: Node,
+        folder: Optional[Node] = None,
         progress: Optional[ProgressCallback] = None,
         cancel: Optional[threading.Event] = None,
     ) -> str:
-        """Extract the whole layer into the cache and return the path of ``node`` in it.
+        """Extract ``folder`` (default: the whole layer) with full paths into the cache and
+        return the path of ``node``, which must be inside it.
 
         For files that refer to other files of the archive by relative paths (web pages).
-        The tree is extracted once per layer; files in it are not executable. Damaged
-        entries are left out, but ``node`` itself must be intact.
+        Each folder is extracted once; the whole layer serves every folder. Files in it are
+        not executable. Damaged entries are left out, but ``node`` itself must be intact.
         """
-        if not self.has_tree(layer):
+        folder = folder or layer.root
+        tree = self._tree(layer, folder)
+        if tree is None:
             tree_dir = os.path.join(layer.cache_dir, f"t{self._next()}")
             os.makedirs(tree_dir)
+            raw_paths = None
+            if folder is not layer.root:
+                # 7z can only create a hard link when its target is extracted as well.
+                raw_paths = [*folder.iter_raw_paths(), *folder.iter_hard_link_targets()]
             damaged = False
             try:
                 try:
-                    self.sevenzip.extract(layer.archive_path, tree_dir, password=layer.password,
-                                          progress=progress, cancel=cancel)
+                    self.sevenzip.extract(layer.archive_path, tree_dir, raw_paths,
+                                          password=layer.password, progress=progress,
+                                          cancel=cancel)
                 except (Cancelled, PasswordRequired, NotAnArchive):
                     raise
                 except SevenZipError:
@@ -310,21 +319,29 @@ class Session:
                 shutil.rmtree(tree_dir, ignore_errors=True)
                 raise
             _strip_exec_bits_tree(tree_dir)
-            layer._tree_dir = tree_dir
-            layer._tree_damaged = damaged
-        if layer._tree_damaged:
+            tree = layer._trees[id(folder)] = (tree_dir, damaged)
+        tree_dir, damaged = tree
+        if damaged:
             # 7z writes files that fail the CRC check as well: extracting the file alone
             # raises if it is one of the damaged ones.
             self.extract_to_cache(layer, node, progress=progress, cancel=cancel)
-        path = os.path.join(layer._tree_dir, *node.components)
+        path = os.path.join(tree_dir, *node.components)
         if not os.path.lexists(path):
             raise FileNotFoundError(f"7z did not extract {node.path}")
         return path
 
     @staticmethod
-    def has_tree(layer: Layer) -> bool:
-        """True when ``extract_in_tree`` needs no extraction for ``layer``."""
-        return bool(layer._tree_dir) and os.path.isdir(layer._tree_dir)
+    def _tree(layer: Layer, folder: Node) -> Optional[tuple[str, bool]]:
+        for key in (id(layer.root), id(folder)):
+            tree = layer._trees.get(key)
+            if tree is not None and os.path.isdir(tree[0]):
+                return tree
+        return None
+
+    @classmethod
+    def has_tree(cls, layer: Layer, folder: Optional[Node] = None) -> bool:
+        """True when ``extract_in_tree`` needs no extraction for ``folder``."""
+        return cls._tree(layer, folder or layer.root) is not None
 
 
 def _strip_exec_bits_tree(root: str) -> None:

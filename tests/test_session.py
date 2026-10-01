@@ -137,7 +137,7 @@ def test_extract_in_tree_cancel_removes_partial_tree(sz, tmp_path):
     cancel.set()
     with pytest.raises(Cancelled):
         s.extract_in_tree(layer, layer.root.find("site/index.html"), cancel=cancel)
-    assert set(os.listdir(layer.cache_dir)) == before and not layer._tree_dir
+    assert set(os.listdir(layer.cache_dir)) == before and not s.has_tree(layer)
 
 
 def test_extract_in_tree_again_when_tree_is_gone(sz, tmp_path):
@@ -146,7 +146,7 @@ def test_extract_in_tree_again_when_tree_is_gone(sz, tmp_path):
     layer = s.open_file(str(_web_zip(tmp_path / "web.zip")))
     node = layer.root.find("site/index.html")
     first = s.extract_in_tree(layer, node)
-    shutil.rmtree(layer._tree_dir)
+    shutil.rmtree(first.rsplit("/site/", 1)[0])
     assert not s.has_tree(layer)
     again = s.extract_in_tree(layer, node)
     assert again != first and os.path.isfile(again) and s.has_tree(layer)
@@ -211,3 +211,20 @@ def test_archive_size_counts_all_volumes(sz, archives, tmp_path):
     volumes = [n for n in os.listdir(directory) if n.startswith("split.7z.")]
     assert len(volumes) > 1
     assert layer.archive_size == sum(os.path.getsize(os.path.join(directory, n)) for n in volumes)
+
+
+def test_extract_in_tree_folder_only(sz, tmp_path):
+    s = Session(sz, cache_root=str(tmp_path / "c"))
+    layer = s.open_file(str(_web_zip(tmp_path / "web.zip")))
+    node = layer.root.find("site/index.html")
+    site = layer.root.find("site")
+    page = s.extract_in_tree(layer, node, site)
+    assert page.endswith("/site/index.html")
+    root = page[:-len("site/index.html")]
+    assert os.path.isfile(os.path.join(root, "site", "css", "a.css"))
+    assert not os.path.exists(os.path.join(root, "shared"))
+    assert s.has_tree(layer, site) and not s.has_tree(layer)
+    assert s.extract_in_tree(layer, node, site) == page  # extracted once
+    # once the whole layer is extracted, it serves every folder
+    whole = s.extract_in_tree(layer, node)
+    assert whole != page and s.extract_in_tree(layer, node, site) == whole

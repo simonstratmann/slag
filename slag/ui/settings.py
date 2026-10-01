@@ -88,7 +88,7 @@ class SettingsDialog(QDialog):
         form.addRow("Web pages: ask for archives over:", self.web_limit_spin)
         web_hint = QLabel("Opening an HTML file extracts the whole archive, so the browser finds "
                           "its images, styles and scripts. For larger archive files SLAG asks "
-                          "first.", self)
+                          "first and can extract only the page's folder.", self)
         web_hint.setWordWrap(True)
         form.addRow("", web_hint)
 

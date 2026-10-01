@@ -20,6 +20,7 @@ from ..backend.sevenzip import Cancelled, NotAnArchive, PasswordRequired, SevenZ
 from ..backend.session import Layer, Session
 from ..backend.tree import Node
 from ..backend.volumes import is_archive_name
+from ..backend.webpage import is_web_page, page_folder
 from .archive_model import ArchiveModel, COL_NAME, format_size
 from .conflict import ConflictResolver
 from .extract_dialog import ExtractDialog, recent_targets, remember_target, target_problem
@@ -31,8 +32,6 @@ from .tree_model import ArchiveTreeModel
 APP_NAME = "SLAG"  # Simon's Little Archive GUI
 APP_ID = "slag"  # config/cache dirs, desktop file
 PATH_SEPARATOR = " › "
-# Opened from a copy of the whole archive, so relative links to other files work.
-WEB_PAGE_EXTENSIONS = (".html", ".htm", ".xhtml", ".shtml")
 
 
 class FileView(QTreeView):
@@ -411,7 +410,7 @@ class MainWindow(QMainWindow):
 
     def open_external(self, node: Node) -> bool:
         """Extract to the temp cache and open with the associated application."""
-        if node.name.lower().endswith(WEB_PAGE_EXTENSIONS):
+        if is_web_page(node.name):
             path = self.extract_web_page(node)
         else:
             path = self.extract_to_cache(node)
@@ -529,33 +528,51 @@ class MainWindow(QMainWindow):
     def extract_web_page(self, node: Node) -> Optional[str]:
         """Extract the whole current layer so the page's linked files load as well.
 
-        Archive files above the configured size ask first; the user may extract the page
-        alone.
+        Archive files above the configured size ask first; the user may extract only the
+        page's folder (and the folders its '../' links lead to) instead.
         """
         assert self.layer is not None
         layer = self.layer
         size = layer.archive_size
+        folder = None
         if not self.session.has_tree(layer) and size > web_tree_limit_mb(self.settings) * 1024 * 1024:
-            box = QMessageBox(QMessageBox.Icon.Question, APP_NAME,
-                              f"Extract the whole archive ({format_size(size)}, "
-                              f"{format_size(layer.root.total_size)} unpacked) so that "
-                              f"{node.name} can load its images, styles and scripts?",
-                              parent=self)
-            whole = box.addButton("Extract Whole Archive", QMessageBox.ButtonRole.AcceptRole)
-            single = box.addButton("Only This File", QMessageBox.ButtonRole.AcceptRole)
-            box.addButton(QMessageBox.StandardButton.Cancel)
-            box.setDefaultButton(whole)
-            box.exec()
-            if box.clickedButton() is single:
-                return self.extract_to_cache(node)
-            if box.clickedButton() is not whole:
+            single = self.extract_to_cache(node)
+            if single is None:
                 return None
+            try:
+                with open(single, "rb") as fh:
+                    page = fh.read(_WEB_PAGE_SCAN_BYTES).decode("utf-8", "replace")
+            except OSError:
+                page = ""
+            candidate = page_folder(node, page)
+            text = (f"Extract the whole archive ({format_size(size)}, "
+                    f"{format_size(layer.root.total_size)} unpacked) so that "
+                    f"{html.escape(node.name)} can load its images, styles and scripts?")
+            if candidate is not layer.root:
+                text += (f"<br><br><b>Only This Folder</b> extracts "
+                         f"<tt>{html.escape(candidate.path)}/</tt> "
+                         f"({format_size(candidate.total_size)} unpacked).")
+            box = QMessageBox(QMessageBox.Icon.Question, APP_NAME, text, parent=self)
+            box.setTextFormat(Qt.TextFormat.RichText)
+            whole = box.addButton("Extract Whole Archive", QMessageBox.ButtonRole.AcceptRole)
+            only_folder = None
+            if candidate is not layer.root:
+                only_folder = box.addButton("Only This Folder", QMessageBox.ButtonRole.AcceptRole)
+            box.addButton(QMessageBox.StandardButton.Cancel)
+            box.setDefaultButton(only_folder or whole)
+            box.exec()
+            clicked = box.clickedButton()
+            if only_folder is not None and clicked is only_folder:
+                folder = candidate
+            elif clicked is not whole:
+                return None
+        title = f"Extracting {folder.path if folder else layer.display_name}…"
         return self.with_layer_password(
             layer,
             lambda: run_blocking(
-                self, f"Extracting {layer.display_name}…",
+                self, title,
                 lambda progress, cancel: self.session.extract_in_tree(
-                    layer, node, progress=progress, cancel=cancel)),
+                    layer, node, folder, progress=progress, cancel=cancel)),
             # Only other files are encrypted: open the page without them.
             without_password=None if node.encrypted else lambda: self.extract_to_cache(node),
         )
@@ -701,4 +718,5 @@ def strip_exec_bits(path: str) -> None:
 
 
 _EMPTY_ROOT = Node("", True)
+_WEB_PAGE_SCAN_BYTES = 4 * 1024 * 1024  # links in a page are searched for in this much
 _NOT_AN_ARCHIVE = object()
