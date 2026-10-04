@@ -47,6 +47,13 @@ def archives(tmp_path_factory):
     out["zip"] = root / "a.zip"
     run(["tar", "czf", str(root / "a.tar.gz"), "."], cwd=src)  # entries start with "./"
     out["tar.gz"] = root / "a.tar.gz"
+    # xz and zstd store no name for the compressed tar
+    run(["tar", "cJf", str(root / "a.tar.xz"), "."], cwd=src)
+    out["tar.xz"] = root / "a.tar.xz"
+    run(["tar", "cJf", str(root / "a.txz"), "."], cwd=src)
+    out["txz"] = root / "a.txz"
+    run(["tar", "--zstd", "-cf", str(root / "a.tar.zst"), "."], cwd=src)
+    out["tar.zst"] = root / "a.tar.zst"
     run(["tar", "cf", str(root / "a.tar"), "."], cwd=src)
     out["tar"] = root / "a.tar"
     run(["7z", "a", str(root / "a.7z"), "."], cwd=src)

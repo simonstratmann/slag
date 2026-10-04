@@ -18,6 +18,8 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Callable, Iterable, Optional
 
+from .volumes import STREAM_TYPES
+
 ProgressCallback = Callable[[int], None]
 
 
@@ -185,6 +187,26 @@ def _parse_int(value: str) -> Optional[int]:
         return None
 
 
+# Single-stream formats whose entry 7z may list without a Path (xz and zstd store no
+# name): 7z then extracts it under the archive's name with these extensions replaced.
+_STREAM_EXTENSIONS = {
+    "gz": "", "bz2": "", "bzip2": "", "xz": "", "zst": "", "lzma": "", "lz": "", "z": "",
+    "br": "", "lz4": "",
+    "tgz": ".tar", "tbz": ".tar", "tbz2": ".tar", "txz": ".tar", "tzst": ".tar",
+    "taz": ".tar", "tlz": ".tar", "tlzma": ".tar",
+}
+
+
+def stream_entry_name(archive_name: str) -> str:
+    """Name 7z gives the nameless entry of a single-stream archive (a.tar.xz -> a.tar)."""
+    stem, dot, ext = archive_name.rpartition(".")
+    if dot and stem:
+        replacement = _STREAM_EXTENSIONS.get(ext.lower())
+        if replacement is not None:
+            return stem + replacement
+    return archive_name + "~"
+
+
 def parse_listing(stdout: str) -> Listing:
     """Parse the output of ``7z l -slt``."""
     # Not splitlines(): that also splits on \r, \x1c, \x85, ... which are valid in names.
@@ -217,8 +239,12 @@ def parse_listing(stdout: str) -> Listing:
 
     def flush() -> None:
         if "Path" not in block:
-            block.clear()
-            return
+            if not (block and archive_props.get("Type", "").strip().lower() in STREAM_TYPES
+                    and not entries):
+                block.clear()
+                return
+            block["Path"] = stream_entry_name(
+                os.path.basename(archive_props.get("Path", "")))
         attrs = block.get("Attributes", "")
         is_dir = block.get("Folder", "").strip() == "+" or attrs.startswith("D")
         entries.append(

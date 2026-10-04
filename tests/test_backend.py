@@ -5,7 +5,7 @@ import pytest
 
 from slag.backend.extract import ConflictAction, extract_nodes, unique_name
 from slag.backend.sevenzip import (
-    Cancelled, NotAnArchive, PasswordRequired, parse_listing,
+    Cancelled, NotAnArchive, PasswordRequired, parse_listing, stream_entry_name,
 )
 from slag.backend.tree import build_tree, normalize_components
 from slag.backend.volumes import first_volume, is_archive_name
@@ -228,6 +228,21 @@ def test_first_volume(tmp_path):
     assert first_volume(str(tmp_path / "z.z01")) == str(tmp_path / "z.zip")
     assert first_volume(str(tmp_path / "o.r00")) == str(tmp_path / "o.rar")
     assert first_volume(str(tmp_path / "missing.part3.rar")) == str(tmp_path / "missing.part3.rar")
+
+
+def test_stream_entry_name():
+    assert stream_entry_name("a.tar.xz") == "a.tar"
+    assert stream_entry_name("a.txz") == "a.tar"
+    assert stream_entry_name("a.TZST") == "a.tar"
+    assert stream_entry_name("log.ZST") == "log"
+    assert stream_entry_name("noext") == "noext~"
+    assert stream_entry_name(".xz") == ".xz~"
+
+
+def test_nameless_xz_entry_is_listed(sz, archives):
+    listing = sz.list(str(archives["tar.xz"]))
+    assert listing.archive_type == "xz"
+    assert [e.path for e in listing.entries] == ["a.tar"]
 
 
 def test_is_archive_name():

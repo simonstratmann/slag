@@ -19,6 +19,26 @@ def test_open_tar_gz_unwraps(sz, archives, tmp_path):
     assert layer.parent is None
 
 
+@pytest.mark.parametrize("kind", ["tar.xz", "txz", "tar.zst"])
+def test_open_nameless_compressed_tar_unwraps(sz, archives, tmp_path, kind):
+    s = Session(sz, cache_root=str(tmp_path))
+    layer = s.open_file(str(archives[kind]))
+    assert layer.archive_type == "tar"
+    assert layer.display_name == archives[kind].name
+    assert layer.root.find("folder/sub/a.txt") is not None
+
+
+def test_nested_tar_xz_unwraps(sz, archives, tmp_path):
+    with zipfile.ZipFile(tmp_path / "outer.zip", "w") as z:
+        z.write(archives["tar.xz"], "inner/a.tar.xz")
+    s = Session(sz, cache_root=str(tmp_path / "c"))
+    outer = s.open_file(str(tmp_path / "outer.zip"))
+    txz = s.open_nested(outer, outer.root.find("inner/a.tar.xz"))
+    assert txz.archive_type == "tar" and txz.parent is outer
+    assert txz.root.find("folder/file.txt") is not None
+    s.close()
+
+
 def test_open_split_from_later_volume(sz, archives, tmp_path):
     s = Session(sz, cache_root=str(tmp_path))
     second = str(archives["split7z"])[:-1] + "2"
