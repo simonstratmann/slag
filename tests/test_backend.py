@@ -5,9 +5,9 @@ import pytest
 
 from slag.backend.extract import ConflictAction, extract_nodes, unique_name
 from slag.backend.sevenzip import (
-    Cancelled, NotAnArchive, PasswordRequired, parse_listing, stream_entry_name,
+    Cancelled, Entry, NotAnArchive, PasswordRequired, parse_listing, stream_entry_name,
 )
-from slag.backend.tree import build_tree, normalize_components
+from slag.backend.tree import build_tree, normalize_components, symlinks_stay_inside
 from slag.backend.volumes import first_volume, is_archive_name
 
 
@@ -282,6 +282,39 @@ def test_symlink_extracted_as_link(sz, odd_archives, tmp_path):
     extract_nodes(sz, str(odd_archives["links"]), [root.child("d")], tmp_path, no_conflicts)
     assert (tmp_path / "d" / "sym").is_symlink()
     assert (tmp_path / "d" / "sym").read_text() == "x"
+
+
+def test_symlink_to_parent_folder_extracted_as_link(sz, odd_archives, tmp_path):
+    # 7-Zip >= 25.01 refuses every ".." link unless -snld20 is given.
+    root = tree_for(sz, odd_archives["links"])
+    res = extract_nodes(sz, str(odd_archives["links"]), [root.child("d")], tmp_path,
+                        no_conflicts)
+    assert res.errors == []
+    assert (tmp_path / "d" / "sub" / "up").is_symlink()
+    assert (tmp_path / "d" / "sub" / "up").read_text() == "x"
+
+
+def test_escaping_symlink_is_not_created(sz, odd_archives, tmp_path):
+    root = tree_for(sz, odd_archives["escape"])
+    extract_nodes(sz, str(odd_archives["escape"]), [root.child("d")], tmp_path, no_conflicts)
+    assert not (tmp_path / "d" / "out").is_symlink()
+
+
+@pytest.mark.parametrize("links, safe", [
+    ({"a/l": "b"}, True),
+    ({"a/b/l": "../c"}, True),
+    ({"a/l": "../c"}, True),
+    ({"a/l": ""}, True),
+    ({"a/l": "../../c"}, False),
+    ({"a/l": "/etc/passwd"}, False),
+    ({"a/l": "./../.."}, False),
+    # a/b/l lands at c; c/.. is the root and one more ".." leaves it.
+    ({"a/b/l": "../../c", "a/b/x": "l/../.."}, False),
+    ({"a/b/l": "../../c", "a/b/x": "l/f"}, True),
+])
+def test_symlinks_stay_inside(links, safe):
+    root = build_tree(Entry(path=p, is_dir=False, symlink=t) for p, t in links.items())
+    assert symlinks_stay_inside([root]) is safe
 
 
 def test_partial_failure_keeps_good_files(sz, odd_archives, tmp_path):

@@ -15,7 +15,7 @@ from typing import Optional
 from .sevenzip import (
     Cancelled, NotAnArchive, PasswordRequired, ProgressCallback, SevenZip, SevenZipError,
 )
-from .tree import Node, build_tree
+from .tree import Node, build_tree, symlinks_stay_inside
 from .volumes import STREAM_TYPES, first_volume, sibling_volumes
 
 # Outer file names for which the single inner file is unwrapped even without ".tar" in
@@ -273,6 +273,7 @@ class Session:
         self.sevenzip.extract(
             layer.archive_path, out_dir, raw_paths,
             password=layer.password, progress=progress, cancel=cancel,
+            links_safe=symlinks_stay_inside(nodes),
         )
         path = os.path.join(out_dir, *node.components)
         if not os.path.lexists(path):
@@ -309,7 +310,8 @@ class Session:
                 try:
                     self.sevenzip.extract(layer.archive_path, tree_dir, raw_paths,
                                           password=layer.password, progress=progress,
-                                          cancel=cancel)
+                                          cancel=cancel,
+                                          links_safe=symlinks_stay_inside([folder]))
                 except (Cancelled, PasswordRequired, NotAnArchive):
                     raise
                 except SevenZipError:

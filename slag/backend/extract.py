@@ -22,7 +22,7 @@ from typing import Callable, Optional, Sequence
 from .sevenzip import (
     Cancelled, NotAnArchive, PasswordRequired, ProgressCallback, SevenZip, SevenZipError,
 )
-from .tree import Node
+from .tree import Node, symlinks_stay_inside
 
 
 class ConflictAction(enum.Enum):
@@ -187,7 +187,8 @@ def extract_nodes(
     try:
         try:
             sevenzip.extract(archive, str(staging), raw_paths, password=password,
-                             progress=progress, cancel=cancel)
+                             progress=progress, cancel=cancel,
+                             links_safe=symlinks_stay_inside(nodes))
         except (PasswordRequired, NotAnArchive):
             raise
         except SevenZipError as exc:

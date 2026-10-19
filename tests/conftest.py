@@ -148,7 +148,26 @@ def odd_archives(tmp_path_factory):
         ti.type = tarfile.SYMTYPE
         ti.linkname = "orig"
         t.addfile(ti)
+        # Like the JDK's legal/<module>/LICENSE -> ../java.base/LICENSE
+        ti = tarfile.TarInfo("d/sub/up")
+        ti.type = tarfile.SYMTYPE
+        ti.linkname = "../orig"
+        t.addfile(ti)
     out["links"] = root / "links.tar"
+
+    with tarfile.open(root / "escape.tar", "w") as t:
+        ti = tarfile.TarInfo("d/orig")
+        ti.size = 1
+        t.addfile(ti, io.BytesIO(b"x"))
+        ti = tarfile.TarInfo("d/up")
+        ti.type = tarfile.SYMTYPE
+        ti.linkname = "../orig"
+        t.addfile(ti)
+        ti = tarfile.TarInfo("d/out")
+        ti.type = tarfile.SYMTYPE
+        ti.linkname = "../../outside"
+        t.addfile(ti)
+    out["escape"] = root / "escape.tar"
 
     # Stored zip with one corrupted file -> CRC error for that file only
     with zipfile.ZipFile(root / "crc.zip", "w", compression=zipfile.ZIP_STORED) as z:

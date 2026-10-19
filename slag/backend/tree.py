@@ -108,6 +108,47 @@ class Node:
         return files, dirs
 
 
+def symlinks_stay_inside(nodes: Iterable[Node]) -> bool:
+    """True when no symbolic link in the subtrees of ``nodes`` can point outside the archive.
+
+    7z >= 25.01 refuses every link target with a ".." in it, even "../sibling/file", and
+    its switch to allow them turns off all checks. This decides whether that is safe. The
+    check is lexical: a ".." after passing through another link of the archive counts as
+    unsafe, since that link may land at a different depth.
+    """
+    nodes = list(nodes)
+    if not nodes:
+        return True
+    root = nodes[0]
+    while root.parent is not None:
+        root = root.parent
+    for node in nodes:
+        for n in node.walk():
+            if n.symlink and not _link_stays_inside(root, n):
+                return False
+    return True
+
+
+def _link_stays_inside(root: Node, link: Node) -> bool:
+    if link.symlink.startswith("/"):
+        return False
+    pos = link.components[:-1]
+    via_link = False
+    for part in link.symlink.split("/"):
+        if part in ("", "."):
+            continue
+        if part == "..":
+            if via_link or not pos:
+                return False
+            pos.pop()
+        else:
+            pos.append(part)
+            n = root.find("/".join(pos))
+            if n is not None and n.symlink:
+                via_link = True
+    return True
+
+
 def build_tree(entries: Iterable[Entry]) -> Node:
     root = Node("", True)
     for e in entries:

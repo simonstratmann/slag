@@ -295,9 +295,26 @@ def parse_listing(stdout: str) -> Listing:
     )
 
 
+_VERSION_RE = re.compile(r"7-Zip\b\D*(\d+)\.(\d+)")
+
+
 class SevenZip:
     def __init__(self, exe: Optional[str] = None):
         self.exe = exe or find_7z()
+        self._version: Optional[tuple[int, int]] = None
+
+    @property
+    def version(self) -> tuple[int, int]:
+        """(major, minor) from the 7z banner, (0, 0) if it can't be read."""
+        if self._version is None:
+            try:
+                out = subprocess.run([self.exe], stdin=subprocess.DEVNULL, capture_output=True,
+                                     text=True, timeout=10).stdout
+            except (OSError, subprocess.SubprocessError):
+                out = ""
+            m = _VERSION_RE.search(out)
+            self._version = (int(m[1]), int(m[2])) if m else (0, 0)
+        return self._version
 
     def list(self, archive: str, password: str = "", cancel: Optional[threading.Event] = None) -> Listing:
         args = [self.exe, "l", "-slt", "-sccUTF-8", f"-p{password}", "--", archive]
@@ -323,12 +340,19 @@ class SevenZip:
         password: str = "",
         progress: Optional[ProgressCallback] = None,
         cancel: Optional[threading.Event] = None,
+        links_safe: bool = False,
     ) -> None:
-        """Extract ``raw_paths`` (or everything when None) with full paths into ``out_dir``."""
+        """Extract ``raw_paths`` (or everything when None) with full paths into ``out_dir``.
+
+        ``links_safe``: the caller checked that no symbolic link points outside the archive
+        (see tree.symlinks_stay_inside), so 7z may create links with ".." in their target.
+        """
         args = [
             self.exe, "x", "-y", "-aoa", "-spd", "-sccUTF-8", "-scsUTF-8",
             "-bso0", "-bsp1", f"-p{password}", f"-o{out_dir}",
         ]
+        if links_safe and self.version >= (25, 1):
+            args.append("-snld20")
         list_file = None
         try:
             if raw_paths is not None:
