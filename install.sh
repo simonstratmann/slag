@@ -89,3 +89,8 @@ if ! 7z i 2>/dev/null | sed -n '/^Codecs:/,$p' | grep -qi 'rar'; then
     echo "Note: 7-Zip has no RAR codec, so RAR archives can be listed but not extracted."
     echo "      Install it with: sudo apt install 7zip-rar"
 fi
+if ! command -v rapidgzip >/dev/null 2>&1; then
+    echo
+    echo "Recommended: rapidgzip decompresses .tar.gz archives in parallel, which makes"
+    echo "      opening big ones many times faster. Install it with: pipx install rapidgzip"
+fi

@@ -15,6 +15,7 @@ from typing import Optional
 from .sevenzip import (
     Cancelled, NotAnArchive, PasswordRequired, ProgressCallback, SevenZip, SevenZipError,
 )
+from . import rapidgzip
 from .tree import Node, build_tree, symlinks_stay_inside
 from .volumes import STREAM_TYPES, first_volume, sibling_volumes
 
@@ -117,6 +118,8 @@ class Session:
 
     def __init__(self, sevenzip: Optional[SevenZip] = None, cache_root: Optional[str] = None):
         self.sevenzip = sevenzip or SevenZip()
+        # Decompresses gzip in parallel; None when not installed.
+        self.rapidgzip = rapidgzip.find_rapidgzip()
         if cache_root is None:
             parent = _default_cache_parent()
             os.makedirs(parent, mode=0o700, exist_ok=True)
@@ -224,7 +227,9 @@ class Session:
         if not (inner_node.name.lower().endswith(".tar")
                 or layer.display_name.lower().endswith(_TAR_SHORTHANDS)):
             return layer
-        path = self.extract_to_cache(layer, inner_node, progress=progress, cancel=cancel)
+        path = self._decompress_gzip(layer, inner_node, progress, cancel)
+        if path is None:
+            path = self.extract_to_cache(layer, inner_node, progress=progress, cancel=cancel)
         try:
             listing = self.sevenzip.list(path, cancel=cancel)
         except (NotAnArchive, PasswordRequired, SevenZipError):
@@ -243,6 +248,23 @@ class Session:
             origin_path=layer.origin_path,
             warning=layer.warning or listing.warning,
         )
+
+    def _decompress_gzip(self, layer: Layer, node: Node, progress: Optional[ProgressCallback],
+                         cancel: Optional[threading.Event]) -> Optional[str]:
+        """Decompress the content of a gzip layer with rapidgzip into the layer's cache.
+
+        Returns None when rapidgzip is not installed or failed (7z has to do it then).
+        """
+        if self.rapidgzip is None or layer.archive_type.lower() != "gzip":
+            return None
+        out_dir = os.path.join(layer.cache_dir, f"f{self._next()}")
+        path = os.path.join(out_dir, *node.components)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        if not rapidgzip.decompress(self.rapidgzip, layer.archive_path, path, node.size,
+                                    progress=progress, cancel=cancel):
+            return None
+        layer._cached[id(node)] = path
+        return path
 
     # -- files ----------------------------------------------------------------------
 

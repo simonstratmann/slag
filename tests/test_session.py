@@ -1,4 +1,5 @@
 import os
+import shutil
 import subprocess
 import threading
 import zipfile
@@ -106,6 +107,27 @@ def test_plain_gz_is_not_extracted_for_unwrapping(sz, archives, tmp_path, monkey
     monkeypatch.setattr(s, "extract_to_cache", lambda *a, **k: calls.append(a[1].name) or orig(*a, **k))
     s.open_nested(outer, outer.root.child("note.txt.gz"))
     assert calls == ["note.txt.gz"]  # the inner note.txt was not extracted
+
+
+@pytest.mark.skipif(shutil.which("rapidgzip") is None, reason="rapidgzip not installed")
+def test_tar_gz_is_unwrapped_with_rapidgzip(sz, archives, tmp_path, monkeypatch):
+    s = Session(sz, cache_root=str(tmp_path / "c"))
+    monkeypatch.setattr(s, "extract_to_cache", lambda *a, **k: pytest.fail("7z was used"))
+    layer = s.open_file(str(archives["tar.gz"]))
+    assert layer.archive_type == "tar"
+    assert layer.root.find("folder/sub/a.txt") is not None
+
+
+def test_tar_gz_falls_back_to_7z_when_rapidgzip_fails(sz, archives, tmp_path):
+    # Exits successfully with truncated output, like rapidgzip does on a truncated file.
+    fake = tmp_path / "rapidgzip"
+    fake.write_text('#!/bin/sh\nprintf x > "$5"\n')
+    fake.chmod(0o755)
+    s = Session(sz, cache_root=str(tmp_path / "c"))
+    s.rapidgzip = str(fake)
+    layer = s.open_file(str(archives["tar.gz"]))
+    assert layer.archive_type == "tar"
+    assert layer.root.find("folder/sub/a.txt") is not None
 
 
 def test_damaged_archive_warning(sz, odd_archives, tmp_path):

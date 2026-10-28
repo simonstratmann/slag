@@ -55,6 +55,12 @@ Requirements (Ubuntu/Kubuntu): `sudo apt install 7zip python3-pyqt6`.
 **RAR:** Ubuntu's `7zip` package can list RAR archives but not extract them, because the
 RAR codec is packaged separately: `sudo apt install 7zip-rar` (multiverse).
 
+**Recommended: [rapidgzip](https://github.com/mxmlnkn/rapidgzip)** for big `.tar.gz` archives.
+gzip has no index, so opening one means decompressing the whole tar, and 7z does that on
+a single core. If `rapidgzip` is on the `PATH`, SLAG uses it instead, which runs on all
+cores (a 1.7 GB IntelliJ IDEA download opens in 2 s instead of 15 s):
+`pipx install rapidgzip` (`sudo apt install pipx` first if needed).
+
 ```sh
 ./install.sh            # launcher in ~/.local/bin, desktop entry, MIME types
 ./install.sh --default  # also make it the default application for archives
